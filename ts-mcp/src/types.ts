@@ -153,6 +153,7 @@ export interface IssueUpdate {
   labels?: string[];
   status?: string;
   storyPoints?: number;
+  parentKey?: string;
 }
 
 export interface SprintCreate {
