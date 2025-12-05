@@ -1,0 +1,114 @@
+name: Jira Sync
+
+on:
+  pull_request:
+    types: [opened, closed, reopened]
+
+env:
+  PYTHON_VERSION: "3.13"
+
+jobs:
+  sync-to-jira:
+    name: Sync PR to Jira
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract Jira Ticket ID
+        id: extract
+        run: |
+          # Extract from branch name
+          BRANCH="${{ github.head_ref }}"
+          TICKET=$(echo "$BRANCH" | grep -oE '[A-Z][A-Z0-9]+-[0-9]+' | head -1)
+
+          if [ -z "$TICKET" ]; then
+            # Try PR title
+            TITLE="${{ github.event.pull_request.title }}"
+            TICKET=$(echo "$TITLE" | grep -oE '[A-Z][A-Z0-9]+-[0-9]+' | head -1)
+          fi
+
+          echo "ticket=$TICKET" >> $GITHUB_OUTPUT
+          echo "Found Jira ticket: $TICKET"
+
+      - name: Add PR link to Jira (on open)
+        if: github.event.action == 'opened' && steps.extract.outputs.ticket
+        env:
+          JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
+          JIRA_USER_EMAIL: ${{ secrets.JIRA_USER_EMAIL }}
+          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+        run: |
+          TICKET="${{ steps.extract.outputs.ticket }}"
+          PR_URL="${{ github.event.pull_request.html_url }}"
+          PR_TITLE="${{ github.event.pull_request.title }}"
+          BRANCH="${{ github.head_ref }}"
+
+          # Format comment in Jira wiki markup
+          COMMENT="*Pull Request Opened*
+
+          [${PR_TITLE}|${PR_URL}]
+
+          *Branch:* ${BRANCH}
+          *Author:* ${{ github.event.pull_request.user.login }}"
+
+          # Add comment to Jira using REST API
+          curl -s -X POST \
+            -H "Authorization: Basic $(echo -n ${JIRA_USER_EMAIL}:${JIRA_API_TOKEN} | base64)" \
+            -H "Content-Type: application/json" \
+            "${JIRA_BASE_URL}/rest/api/3/issue/${TICKET}/comment" \
+            -d "{
+              \"body\": {
+                \"type\": \"doc\",
+                \"version\": 1,
+                \"content\": [
+                  {
+                    \"type\": \"paragraph\",
+                    \"content\": [
+                      {\"type\": \"text\", \"text\": \"Pull Request Opened: \"},
+                      {\"type\": \"text\", \"text\": \"${PR_TITLE}\", \"marks\": [{\"type\": \"link\", \"attrs\": {\"href\": \"${PR_URL}\"}}]}
+                    ]
+                  },
+                  {
+                    \"type\": \"paragraph\",
+                    \"content\": [
+                      {\"type\": \"text\", \"text\": \"Branch: ${BRANCH}\"}
+                    ]
+                  }
+                ]
+              }
+            }"
+
+          echo "Added PR link to ${TICKET}"
+
+      - name: Update Jira on PR merge
+        if: github.event.action == 'closed' && github.event.pull_request.merged && steps.extract.outputs.ticket
+        env:
+          JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
+          JIRA_USER_EMAIL: ${{ secrets.JIRA_USER_EMAIL }}
+          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+        run: |
+          TICKET="${{ steps.extract.outputs.ticket }}"
+          PR_URL="${{ github.event.pull_request.html_url }}"
+
+          # Add merge comment
+          curl -s -X POST \
+            -H "Authorization: Basic $(echo -n ${JIRA_USER_EMAIL}:${JIRA_API_TOKEN} | base64)" \
+            -H "Content-Type: application/json" \
+            "${JIRA_BASE_URL}/rest/api/3/issue/${TICKET}/comment" \
+            -d "{
+              \"body\": {
+                \"type\": \"doc\",
+                \"version\": 1,
+                \"content\": [
+                  {
+                    \"type\": \"paragraph\",
+                    \"content\": [
+                      {\"type\": \"text\", \"text\": \"✅ Pull Request Merged: \"},
+                      {\"type\": \"text\", \"text\": \"View PR\", \"marks\": [{\"type\": \"link\", \"attrs\": {\"href\": \"${PR_URL}\"}}]}
+                    ]
+                  }
+                ]
+              }
+            }"
+
+          echo "Updated ${TICKET} with merge info"
