@@ -123,31 +123,122 @@ new_sprint = agile.create_sprint(
 )
 ```
 
+## Slash Commands
+
+The server provides Claude Code slash commands for quick Jira operations:
+
+| Command | Description | Example |
+|---------|-------------|---------|
+| `/sprint-status` | View current sprint progress | `/sprint-status` |
+| `/my-issues` | List your assigned issues | `/my-issues MGMT` |
+| `/create-issue` | Create a new issue | `/create-issue MGMT: Add feature` |
+| `/backlog` | View product backlog | `/backlog BCM` |
+| `/transition-issue` | Move issue to new status | `/transition-issue MGMT-123 Done` |
+| `/search` | Search issues with JQL | `/search authentication` |
+| `/standup` | Generate standup report | `/standup` |
+| `/comment` | Add comment to issue | `/comment MGMT-123 Started work` |
+
+## Automation Workflows
+
+The server includes an automation engine for rule-based workflows:
+
+```python
+from src.automation import AutomationEngine, IssueAutomation
+
+# Initialize engine
+engine = AutomationEngine(client)
+issue_auto = IssueAutomation(engine)
+
+# Auto-transition on PR events
+await issue_auto.on_pr_opened("MGMT-123", "https://github.com/...", "Add feature")
+# Issue transitions to "In Review"
+
+await issue_auto.on_pr_merged("MGMT-123", "https://github.com/...")
+# Issue transitions to "Done"
+```
+
+## Session Hooks
+
+Track work sessions with Claude Code:
+
+```python
+from src.session_hooks import SessionHooks
+
+hooks = SessionHooks(client)
+
+# Start session with context
+context = await hooks.on_session_start(
+    session_id="session-123",
+    project_key="MGMT",
+    board_id=3
+)
+# Returns sprint info and work items
+
+# Track issue focus
+await hooks.on_issue_focus("MGMT-123")
+
+# End session with summary
+summary = await hooks.on_session_end()
+# Returns time spent per issue
+```
+
+## GitHub Integration
+
+Link GitHub PRs and commits to Jira issues:
+
+```python
+from src.github_integration import GitHubContext, find_all_tickets, link_pr_to_tickets
+
+# Extract tickets from GitHub context
+ctx = GitHubContext(
+    repo="org/repo",
+    branch="MGMT-123/add-feature",
+    pr_title="MGMT-123: Add new feature",
+    pr_url="https://github.com/org/repo/pull/1"
+)
+tickets = find_all_tickets(ctx)
+# Returns [JiraLink(ticket_id="MGMT-123", source="branch")]
+
+# Link PR to all referenced tickets
+await link_pr_to_tickets(client, ctx)
+```
+
 ## Project Structure
 
 ```
 bodywave-jira/
 ├── src/
-│   ├── __init__.py          # Package initialization
-│   ├── jira_client.py       # Jira REST API client
-│   ├── mcp_orchestrator.py  # MCP server logic
-│   ├── agile_manager.py     # PI/Sprint management
-│   ├── models.py            # Data models
-│   ├── config.py            # Configuration management
-│   ├── auth.py              # Authentication providers
-│   └── exceptions.py        # Custom exceptions
+│   ├── __init__.py           # Package initialization
+│   ├── jira_client.py        # Jira REST API client
+│   ├── mcp_orchestrator.py   # MCP server logic
+│   ├── agile_manager.py      # PI/Sprint management
+│   ├── automation.py         # Automation workflows
+│   ├── github_integration.py # GitHub-Jira linking
+│   ├── session_hooks.py      # Session lifecycle hooks
+│   ├── scrum_calculator.py   # Sprint calculations
+│   ├── models.py             # Data models
+│   ├── config.py             # Configuration management
+│   ├── auth.py               # Authentication providers
+│   └── exceptions.py         # Custom exceptions
 ├── tests/
 │   ├── __init__.py
 │   ├── test_jira_client.py
 │   ├── test_orchestrator.py
-│   └── conftest.py          # Pytest fixtures
+│   ├── test_automation.py
+│   ├── test_github_integration.py
+│   ├── test_session_hooks.py
+│   └── conftest.py           # Pytest fixtures
 ├── config/
-│   └── projects.json        # Project definitions
-├── main.py                  # Entry point
-├── pyproject.toml           # Project configuration
-├── .env.example             # Environment template
-├── CLAUDE.md                # Engineering guidelines
-└── README.md                # This file
+│   └── projects.json         # Project definitions
+├── .claude/
+│   └── commands/             # Slash command definitions
+├── .github/
+│   └── workflows/            # CI/CD pipelines
+├── main.py                   # Entry point
+├── pyproject.toml            # Project configuration
+├── .env.example              # Environment template
+├── CLAUDE.md                 # Engineering guidelines
+└── README.md                 # This file
 ```
 
 ## Agile Configuration
