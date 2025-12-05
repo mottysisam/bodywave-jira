@@ -28,6 +28,11 @@ import {
   FieldConfiguration,
   FieldConfigurationItem,
 } from "./types.js";
+import { RateLimiter } from "./rate-limiter.js";
+import { OperationVerifier, VerificationResult, BulkOperationResult } from "./operation-verifier.js";
+
+// Re-export for external use
+export { OperationVerifier, VerificationResult, BulkOperationResult };
 
 export class JiraClientError extends Error {
   constructor(
@@ -65,9 +70,17 @@ export class JiraClient {
   private client: AxiosInstance;
   private agileClient: AxiosInstance;
   private config: JiraConfig;
+  private rateLimiter: RateLimiter;
+  public verifier: OperationVerifier;
 
   constructor(config?: JiraConfig) {
     this.config = config ?? getConfigFromEnv();
+
+    // Initialize rate limiter (shared across both clients)
+    this.rateLimiter = new RateLimiter();
+
+    // Initialize operation verifier
+    this.verifier = new OperationVerifier();
 
     // Base64 encode email:apiKey for Basic auth
     const auth = Buffer.from(`${this.config.email}:${this.config.apiKey}`).toString("base64");
@@ -91,6 +104,10 @@ export class JiraClient {
         Accept: "application/json",
       },
     });
+
+    // Apply rate limiting to both clients
+    this.rateLimiter.applyTo(this.client);
+    this.rateLimiter.applyTo(this.agileClient);
   }
 
   private handleError(error: unknown): never {
@@ -338,7 +355,10 @@ export class JiraClient {
   }
 
   async startSprint(sprintId: number, startDate: string, endDate: string): Promise<Sprint> {
+    // Jira API requires sprint name when updating state - fetch it first
+    const currentSprint = await this.getSprint(sprintId);
     return this.updateSprint(sprintId, {
+      name: currentSprint.name,
       state: SprintState.ACTIVE,
       startDate,
       endDate,
@@ -346,7 +366,14 @@ export class JiraClient {
   }
 
   async completeSprint(sprintId: number): Promise<Sprint> {
-    return this.updateSprint(sprintId, { state: SprintState.CLOSED });
+    // Jira API requires sprint name, startDate, endDate when updating state
+    const currentSprint = await this.getSprint(sprintId);
+    return this.updateSprint(sprintId, {
+      name: currentSprint.name,
+      state: SprintState.CLOSED,
+      startDate: currentSprint.startDate,
+      endDate: currentSprint.endDate,
+    });
   }
 
   async listSprintsForBoard(boardId: number, state?: SprintState): Promise<Sprint[]> {
@@ -501,6 +528,89 @@ export class JiraClient {
     } catch (error) {
       this.handleError(error);
     }
+  }
+
+  // ==================== Bulk Operations with Verification ====================
+
+  /**
+   * Create multiple issues with verification
+   */
+  async bulkCreateIssues(
+    issues: IssueCreate[]
+  ): Promise<BulkOperationResult> {
+    return this.verifier.runBulkOperation(
+      "bulkCreateIssues",
+      issues,
+      async (data) => this.createIssue(data),
+      async (data, result) => this.verifier.verifyIssueCreated(
+        result.key,
+        () => this.getIssue(result.key),
+        data.summary
+      )
+    );
+  }
+
+  /**
+   * Move multiple issues to sprint with verification
+   */
+  async bulkMoveToSprintWithVerification(
+    sprintId: number,
+    issueKeys: string[]
+  ): Promise<BulkOperationResult> {
+    const startTime = Date.now();
+
+    // Execute the move
+    await this.moveIssuesToSprint(sprintId, issueKeys);
+
+    // Verify all issues are in sprint
+    const verification = await this.verifier.verifyIssuesInSprint(
+      sprintId,
+      issueKeys,
+      () => this.getSprintIssues(sprintId)
+    );
+
+    return {
+      operation: "bulkMoveToSprint",
+      total: issueKeys.length,
+      succeeded: verification.success ? issueKeys.length : 0,
+      failed: verification.success ? 0 : issueKeys.length,
+      results: [verification],
+      duration: Date.now() - startTime,
+      summary: verification.success
+        ? `Moved ${issueKeys.length} issues to sprint ${sprintId}`
+        : `Failed to verify issues in sprint ${sprintId}: ${verification.error}`,
+    };
+  }
+
+  /**
+   * Transition multiple issues with verification
+   */
+  async bulkTransitionIssues(
+    issueKeys: string[],
+    transitionName: string
+  ): Promise<BulkOperationResult> {
+    return this.verifier.runBulkOperation(
+      "bulkTransitionIssues",
+      issueKeys,
+      async (issueKey) => {
+        const transitions = await this.getTransitions(issueKey);
+        const targetTransition = transitions.find(
+          (t) => t.name.toLowerCase() === transitionName.toLowerCase()
+        );
+        if (!targetTransition) {
+          throw new Error(`Transition '${transitionName}' not available for ${issueKey}`);
+        }
+        await this.transitionIssue(issueKey, targetTransition.id);
+        return { issueKey, transitionName };
+      },
+      async (issueKey) => this.verifier.verify(
+        "transitionIssue",
+        issueKey,
+        () => this.getIssue(issueKey),
+        (issue) => issue.status.toLowerCase() === transitionName.toLowerCase()
+          || issue.status.toLowerCase().includes(transitionName.toLowerCase().replace(/\s+/g, ""))
+      )
+    );
   }
 
   // ==================== Parsing Helpers ====================
@@ -662,6 +772,9 @@ export class JiraClient {
     }
     if (data.labels) fields.labels = data.labels;
     if (data.storyPoints !== undefined) fields.customfield_10016 = data.storyPoints;
+    if (data.parentKey !== undefined) {
+      fields.parent = data.parentKey ? { key: data.parentKey } : null;
+    }
 
     return { fields };
   }

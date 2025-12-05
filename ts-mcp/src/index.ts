@@ -23,12 +23,87 @@ import {
 import { JiraClient, JiraClientError } from "./jira-client.js";
 import { SprintState, ProjectTemplate, ProjectTypeKey } from "./types.js";
 
+import { logger } from "./logger.js";
+
 // Version and changelog info
 const VERSION_INFO = {
-  version: "1.0.7",
+  version: "1.0.15",
   name: "@bodywave/jira-mcp",
   description: "MCP server for Jira with full sprint management, bulk operations, and multi-account support",
   changelog: [
+    {
+      version: "1.0.15",
+      date: "2025-12-05",
+      changes: [
+        "Added jira_epic_workflow tool for DevOps automation",
+        "Generates branch names, commit messages, and PR body from EPIC",
+        "Opinionated conventions: feature/{EPIC-KEY}-{slug} branches, {TASK-KEY}: {summary} commits",
+        "Includes post-merge task transition guidance",
+      ],
+    },
+    {
+      version: "1.0.14",
+      date: "2025-12-05",
+      changes: [
+        "Fixed epic-story linking - parent_key now works in jira_update_issue (was only working for create)",
+        "Added parentKey to IssueUpdate interface and buildUpdatePayload",
+        "Supports linking Stories/Tasks to Epics via parent_key parameter",
+      ],
+    },
+    {
+      version: "1.0.13",
+      date: "2025-12-05",
+      changes: [
+        "Changed default to sequential requests (maxConcurrent=1) - one request must complete before next starts",
+        "Prevents API flooding and connection issues with strict request ordering",
+      ],
+    },
+    {
+      version: "1.0.12",
+      date: "2025-12-05",
+      changes: [
+        "Added structured JSON logging with correlation IDs",
+        "Added request/response timing metrics",
+        "Added jira_get_metrics tool for observability",
+        "Configurable log levels via JIRA_LOG_LEVEL env var (DEBUG/INFO/WARN/ERROR)",
+        "All logs output to stderr (MCP compatible)",
+      ],
+    },
+    {
+      version: "1.0.11",
+      date: "2025-12-05",
+      changes: [
+        "Added operation verification with assertions",
+        "Added bulk operation methods with verification (bulkCreateIssues, bulkMoveToSprintWithVerification, bulkTransitionIssues)",
+        "Added OperationVerifier with configurable retry and delay settings",
+      ],
+    },
+    {
+      version: "1.0.10",
+      date: "2025-12-05",
+      changes: [
+        "Added rate limiting with configurable throttling (max 5 concurrent requests)",
+        "Added automatic retry with exponential backoff for 429/5xx/network errors",
+        "Added request queuing to prevent API flooding",
+        "Added rate limit header monitoring (X-RateLimit-Remaining, Retry-After)",
+        "Configurable via env vars: JIRA_MAX_CONCURRENT, JIRA_MAX_RETRIES, JIRA_REQUEST_DELAY_MS",
+      ],
+    },
+    {
+      version: "1.0.9",
+      date: "2025-12-05",
+      changes: [
+        "Fixed jira_complete_sprint - now includes startDate/endDate (Jira API requires all fields)",
+      ],
+    },
+    {
+      version: "1.0.8",
+      date: "2025-12-05",
+      changes: [
+        "Fixed jira_start_sprint - now fetches sprint name before updating state (Jira API requires name)",
+        "Fixed jira_complete_sprint - same fix for sprint name requirement",
+      ],
+    },
     {
       version: "1.0.7",
       date: "2025-12-05",
@@ -209,6 +284,10 @@ const tools: Tool[] = [
         story_points: {
           type: "number",
           description: "New story points",
+        },
+        parent_key: {
+          type: "string",
+          description: "Parent issue key (e.g., Epic key for Story-Epic linking, or Task key for Subtask). Empty string to remove parent.",
         },
       },
       required: ["issue_key"],
@@ -698,6 +777,14 @@ const tools: Tool[] = [
       properties: {},
     },
   },
+  {
+    name: "jira_get_metrics",
+    description: "Get API request metrics including success rate, average latency, top endpoints, and error types. Useful for monitoring and debugging.",
+    inputSchema: {
+      type: "object",
+      properties: {},
+    },
+  },
 
   // ==================== Wizard Tools ====================
   {
@@ -712,6 +799,45 @@ const tools: Tool[] = [
         },
       },
       required: ["repo_name"],
+    },
+  },
+
+  // ==================== DevOps Workflow Tools ====================
+  {
+    name: "jira_epic_workflow",
+    description: `Generate opinionated Git workflow metadata for an EPIC-based PR.
+
+This tool fetches an EPIC and all its child tasks, then generates:
+- Branch name: feature/{EPIC-KEY}-{slug}
+- Commit message templates for each task: {TASK-KEY}: {summary}
+- PR title and body with task checklist
+
+**Workflow:**
+1. Call this tool with an EPIC key
+2. Create the suggested branch: git checkout -b {branch_name}
+3. Stage and commit files using the suggested commit messages
+4. Create PR with the suggested title and body
+5. After merge, transition tasks to Done
+
+**Conventions:**
+- One PR per EPIC (aggregates all related tasks)
+- Branch: feature/{EPIC-KEY}-{lowercase-slug}
+- Commits: {TASK-KEY}: {description}
+- PR links back to EPIC and lists all tasks`,
+    inputSchema: {
+      type: "object",
+      properties: {
+        epic_key: {
+          type: "string",
+          description: "The EPIC issue key (e.g., MGMT-44)",
+        },
+        base_branch: {
+          type: "string",
+          description: "Base branch to merge into (default: main)",
+          default: "main",
+        },
+      },
+      required: ["epic_key"],
     },
   },
 ];
@@ -772,6 +898,152 @@ function generateProjectSuggestions(repoName: string): {
   };
 }
 
+// Helper types for epic workflow
+interface EpicWorkflowTask {
+  key: string;
+  summary: string;
+  status: string;
+  issueType: string;
+  storyPoints?: number;
+  commitMessage: string;
+}
+
+interface EpicWorkflowResult {
+  epic: {
+    key: string;
+    summary: string;
+    status: string;
+    url: string;
+  };
+  tasks: EpicWorkflowTask[];
+  git: {
+    branchName: string;
+    branchCommand: string;
+  };
+  pr: {
+    title: string;
+    body: string;
+  };
+  postMerge: {
+    tasksToTransition: string[];
+    transitionCommand: string;
+  };
+  instructions: string[];
+}
+
+// Helper function to generate slug from text
+function slugify(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 40);
+}
+
+// Helper function to generate epic workflow metadata
+async function generateEpicWorkflow(
+  epicKey: string,
+  baseBranch: string
+): Promise<EpicWorkflowResult> {
+  // Fetch the EPIC
+  const epic = await jiraClient.getIssue(epicKey);
+
+  if (epic.issueType !== "Epic") {
+    throw new Error(`${epicKey} is not an Epic (found: ${epic.issueType})`);
+  }
+
+  // Fetch all child tasks
+  const searchResult = await jiraClient.searchIssues(
+    `parent = ${epicKey} ORDER BY created ASC`,
+    100
+  );
+
+  const tasks: EpicWorkflowTask[] = searchResult.issues.map((issue) => ({
+    key: issue.key,
+    summary: issue.summary,
+    status: issue.status,
+    issueType: issue.issueType,
+    storyPoints: issue.storyPoints,
+    commitMessage: `${issue.key}: ${issue.summary}`,
+  }));
+
+  // Generate branch name
+  const slug = slugify(epic.summary);
+  const branchName = `feature/${epicKey.toLowerCase()}-${slug}`;
+
+  // Generate PR body with markdown checklist
+  const taskList = tasks
+    .map((t) => {
+      const status = t.status === "Done" ? "x" : " ";
+      const points = t.storyPoints ? ` (${t.storyPoints}pt)` : "";
+      return `- [${status}] **${t.key}**: ${t.summary}${points}`;
+    })
+    .join("\n");
+
+  const totalPoints = tasks.reduce((sum, t) => sum + (t.storyPoints || 0), 0);
+  const doneCount = tasks.filter((t) => t.status === "Done").length;
+
+  // Get Jira base URL from config
+  const jiraUrl = process.env.JIRA_URL || "https://bodywave.atlassian.net";
+  const epicUrl = `${jiraUrl}/browse/${epicKey}`;
+
+  const prBody = `## Summary
+
+This PR implements **[${epicKey}](${epicUrl}): ${epic.summary}**
+
+## Tasks
+
+${taskList}
+
+**Progress:** ${doneCount}/${tasks.length} tasks | **Story Points:** ${totalPoints}
+
+## Links
+
+- Epic: [${epicKey}](${epicUrl})
+- Project: ${epic.projectKey}
+
+---
+🤖 Generated with [Bodywave Jira MCP](https://github.com/bodywave/jira-mcp)`;
+
+  // Tasks that need transitioning after merge
+  const tasksToTransition = tasks
+    .filter((t) => t.status !== "Done")
+    .map((t) => t.key);
+
+  return {
+    epic: {
+      key: epic.key,
+      summary: epic.summary,
+      status: epic.status,
+      url: epicUrl,
+    },
+    tasks,
+    git: {
+      branchName,
+      branchCommand: `git checkout -b ${branchName}`,
+    },
+    pr: {
+      title: `[${epicKey}] ${epic.summary}`,
+      body: prBody,
+    },
+    postMerge: {
+      tasksToTransition,
+      transitionCommand: tasksToTransition.length > 0
+        ? `# Transition tasks to Done after merge:\n${tasksToTransition.map((k) => `jira_transition_issue(issue_key="${k}", transition_name="Done")`).join("\n")}`
+        : "# All tasks already Done - no transitions needed",
+    },
+    instructions: [
+      `1. Create branch: git checkout -b ${branchName}`,
+      `2. Stage your changes and commit using task keys:`,
+      ...tasks.slice(0, 3).map((t) => `   git commit -m "${t.commitMessage}"`),
+      tasks.length > 3 ? `   ... (${tasks.length - 3} more tasks)` : "",
+      `3. Push branch: git push -u origin ${branchName}`,
+      `4. Create PR: gh pr create --title "[${epicKey}] ${epic.summary}" --body "..."`,
+      `5. After CI passes and PR is merged, transition remaining tasks to Done`,
+    ].filter(Boolean),
+  };
+}
+
 // Tool handler
 async function handleToolCall(
   name: string,
@@ -804,6 +1076,7 @@ async function handleToolCall(
           assigneeId: args.assignee_id as string | undefined,
           labels: args.labels as string[] | undefined,
           storyPoints: args.story_points as number | undefined,
+          parentKey: args.parent_key as string | undefined,
         });
 
       case "jira_delete_issue":
@@ -978,9 +1251,19 @@ async function handleToolCall(
       case "jira_mcp_version":
         return VERSION_INFO;
 
+      case "jira_get_metrics":
+        return logger.getMetricsSummary();
+
       // Wizard tools
       case "jira_suggest_project":
         return generateProjectSuggestions(args.repo_name as string);
+
+      // DevOps Workflow tools
+      case "jira_epic_workflow":
+        return await generateEpicWorkflow(
+          args.epic_key as string,
+          (args.base_branch as string) || "main"
+        );
 
       default:
         throw new Error(`Unknown tool: ${name}`);

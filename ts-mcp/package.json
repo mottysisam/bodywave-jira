@@ -1,6 +1,6 @@
 {
   "name": "@bodywave/jira-mcp",
-  "version": "1.0.7",
+  "version": "1.0.15",
   "description": "MCP server for Jira with full sprint management, bulk operations, and multi-account support",
   "type": "module",
   "main": "dist/index.js",
