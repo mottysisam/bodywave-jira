@@ -20,17 +20,123 @@ import {
   ListToolsRequestSchema,
   Tool,
 } from "@modelcontextprotocol/sdk/types.js";
-import { JiraClient, JiraClientError } from "./jira-client.js";
+import { JiraClientError } from "./jira-client.js";
 import { SprintState, ProjectTemplate, ProjectTypeKey } from "./types.js";
+import { accountManager } from "./account-manager.js";
 
 import { logger } from "./logger.js";
 
 // Version and changelog info
 const VERSION_INFO = {
-  version: "1.0.15",
+  version: "1.0.25",
   name: "@bodywave/jira-mcp",
   description: "MCP server for Jira with full sprint management, bulk operations, and multi-account support",
   changelog: [
+    {
+      version: "1.0.25",
+      date: "2025-12-05",
+      changes: [
+        "Added enhanced comment operations",
+        "New tools: jira_get_comments, jira_get_comment, jira_update_comment, jira_delete_comment",
+        "Full CRUD support for issue comments with pagination",
+      ],
+    },
+    {
+      version: "1.0.24",
+      date: "2025-12-05",
+      changes: [
+        "Added JQL filter management support",
+        "New tools: jira_list_filters, jira_get_filter, jira_search_filters, jira_create_filter",
+        "New tools: jira_update_filter, jira_delete_filter, jira_set_filter_favourite, jira_get_favourite_filters",
+        "New tool: jira_execute_filter - execute saved filters and return matching issues",
+        "Support for filter sharing permissions and favourites",
+      ],
+    },
+    {
+      version: "1.0.23",
+      date: "2025-12-05",
+      changes: [
+        "Added sprint analytics and velocity reporting",
+        "New tools: jira_get_sprint_report, jira_get_sprint_velocity, jira_get_velocity_report, jira_get_sprint_burndown",
+        "Sprint reports with completed/incomplete issues and completion rates",
+        "Velocity tracking across multiple sprints with trend detection",
+        "Burndown charts with ideal line and actual progress",
+      ],
+    },
+    {
+      version: "1.0.22",
+      date: "2025-12-05",
+      changes: [
+        "Added issue linking support",
+        "New tools: jira_list_issue_link_types, jira_get_issue_links, jira_create_issue_link, jira_delete_issue_link",
+        "Support for all link types: Blocks, Relates, Duplicate, Cloners",
+        "Create links between issues with optional comments",
+        "Added IssueLinkTypeName enum for common link types",
+      ],
+    },
+    {
+      version: "1.0.21",
+      date: "2025-12-05",
+      changes: [
+        "Added bulk issue operations with verification",
+        "New tools: jira_bulk_transition_issues, jira_bulk_update_issues, jira_bulk_delete_issues",
+        "New tools: jira_bulk_move_to_sprint, jira_bulk_add_labels, jira_bulk_assign_issues",
+        "All bulk operations include verification to confirm success",
+        "Detailed operation results with succeeded/failed counts",
+      ],
+    },
+    {
+      version: "1.0.20",
+      date: "2025-12-05",
+      changes: [
+        "Added webhook management support",
+        "New tools: jira_list_webhooks, jira_get_webhook, jira_create_webhook, jira_delete_webhooks",
+        "New tools: jira_refresh_webhooks, jira_get_failed_webhooks",
+        "Support for webhook registration, refresh, and monitoring failed callbacks",
+        "Added WebhookEvent enum with common Jira webhook events",
+      ],
+    },
+    {
+      version: "1.0.19",
+      date: "2025-12-05",
+      changes: [
+        "Added file attachment support",
+        "New tools: jira_get_attachments, jira_add_attachment, jira_delete_attachment, jira_get_attachment",
+        "Support for uploading files via base64 encoding",
+        "Added form-data dependency for multipart uploads",
+      ],
+    },
+    {
+      version: "1.0.18",
+      date: "2025-12-05",
+      changes: [
+        "Added time tracking and worklog support",
+        "New tools: jira_get_worklogs, jira_add_worklog, jira_update_worklog, jira_delete_worklog",
+        "New tools: jira_get_time_tracking, jira_set_time_tracking",
+        "Support for logging work time and setting estimates on issues",
+      ],
+    },
+    {
+      version: "1.0.17",
+      date: "2025-12-05",
+      changes: [
+        "Added custom field support",
+        "New tools: jira_list_fields, jira_list_custom_fields, jira_get_field, jira_get_field_options",
+        "New tools: jira_get_issue_field_value, jira_set_issue_field_value, jira_get_issue_custom_fields",
+        "Support for reading/writing any custom field on issues",
+      ],
+    },
+    {
+      version: "1.0.16",
+      date: "2025-12-05",
+      changes: [
+        "Added multi-account management support",
+        "New tools: jira_list_accounts, jira_add_account, jira_remove_account, jira_switch_account, jira_test_account",
+        "Runtime account switching without server restart",
+        "Account credentials stored securely in-memory",
+        "Backwards compatible - default account from env vars works as before",
+      ],
+    },
     {
       version: "1.0.15",
       date: "2025-12-05",
@@ -175,14 +281,9 @@ const VERSION_INFO = {
   ],
 };
 
-// Initialize Jira client
-let jiraClient: JiraClient;
-
-try {
-  jiraClient = new JiraClient();
-} catch (error) {
-  console.error("Failed to initialize Jira client:", error);
-  process.exit(1);
+// Get active Jira client from account manager
+function getJiraClient() {
+  return accountManager.getActiveClient();
 }
 
 // Define MCP tools
@@ -342,6 +443,88 @@ const tools: Tool[] = [
         },
       },
       required: ["issue_key", "comment"],
+    },
+  },
+  {
+    name: "jira_get_comments",
+    description: "Get all comments for an issue with pagination support",
+    inputSchema: {
+      type: "object",
+      properties: {
+        issue_key: {
+          type: "string",
+          description: "Issue key (e.g., BCM-123)",
+        },
+        max_results: {
+          type: "number",
+          description: "Maximum number of comments to return (default: 50)",
+          default: 50,
+        },
+        start_at: {
+          type: "number",
+          description: "Index of the first comment to return (default: 0)",
+          default: 0,
+        },
+      },
+      required: ["issue_key"],
+    },
+  },
+  {
+    name: "jira_get_comment",
+    description: "Get a specific comment by ID",
+    inputSchema: {
+      type: "object",
+      properties: {
+        issue_key: {
+          type: "string",
+          description: "Issue key (e.g., BCM-123)",
+        },
+        comment_id: {
+          type: "string",
+          description: "Comment ID",
+        },
+      },
+      required: ["issue_key", "comment_id"],
+    },
+  },
+  {
+    name: "jira_update_comment",
+    description: "Update an existing comment",
+    inputSchema: {
+      type: "object",
+      properties: {
+        issue_key: {
+          type: "string",
+          description: "Issue key (e.g., BCM-123)",
+        },
+        comment_id: {
+          type: "string",
+          description: "Comment ID to update",
+        },
+        comment: {
+          type: "string",
+          description: "New comment text",
+        },
+      },
+      required: ["issue_key", "comment_id", "comment"],
+    },
+  },
+  {
+    name: "jira_delete_comment",
+    description: "Delete a comment from an issue",
+    inputSchema: {
+      type: "object",
+      properties: {
+        issue_key: {
+          type: "string",
+          description: "Issue key (e.g., BCM-123)",
+        },
+        comment_id: {
+          type: "string",
+          description: "Comment ID to delete",
+        },
+      },
+      required: ["issue_key", "comment_id"],
     },
   },
   {
@@ -629,6 +812,69 @@ const tools: Tool[] = [
     },
   },
 
+  // ==================== Sprint Analytics Tools ====================
+  {
+    name: "jira_get_sprint_report",
+    description: "Get a comprehensive sprint report with completed/incomplete issues and completion rates",
+    inputSchema: {
+      type: "object",
+      properties: {
+        sprint_id: {
+          type: "number",
+          description: "Sprint ID",
+        },
+      },
+      required: ["sprint_id"],
+    },
+  },
+  {
+    name: "jira_get_sprint_velocity",
+    description: "Get velocity data for a single sprint (completed vs committed points)",
+    inputSchema: {
+      type: "object",
+      properties: {
+        sprint_id: {
+          type: "number",
+          description: "Sprint ID",
+        },
+      },
+      required: ["sprint_id"],
+    },
+  },
+  {
+    name: "jira_get_velocity_report",
+    description: "Get velocity report for a board showing trends across multiple sprints",
+    inputSchema: {
+      type: "object",
+      properties: {
+        board_id: {
+          type: "number",
+          description: "Board ID",
+        },
+        sprint_count: {
+          type: "number",
+          description: "Number of recent sprints to include (default: 5)",
+          default: 5,
+        },
+      },
+      required: ["board_id"],
+    },
+  },
+  {
+    name: "jira_get_sprint_burndown",
+    description: "Get burndown data for a sprint with ideal line and actual progress",
+    inputSchema: {
+      type: "object",
+      properties: {
+        sprint_id: {
+          type: "number",
+          description: "Sprint ID",
+        },
+      },
+      required: ["sprint_id"],
+    },
+  },
+
   // ==================== Board Tools ====================
   {
     name: "jira_list_boards",
@@ -768,6 +1014,769 @@ const tools: Tool[] = [
     },
   },
 
+  // ==================== Custom Field Tools ====================
+  {
+    name: "jira_list_fields",
+    description: "List all fields (system and custom) in Jira",
+    inputSchema: {
+      type: "object",
+      properties: {},
+    },
+  },
+  {
+    name: "jira_list_custom_fields",
+    description: "List only custom fields in Jira",
+    inputSchema: {
+      type: "object",
+      properties: {},
+    },
+  },
+  {
+    name: "jira_get_field",
+    description: "Get details about a specific field",
+    inputSchema: {
+      type: "object",
+      properties: {
+        field_id: {
+          type: "string",
+          description: "Field ID (e.g., customfield_10016) or key",
+        },
+      },
+      required: ["field_id"],
+    },
+  },
+  {
+    name: "jira_get_field_options",
+    description: "Get available options for a select/multi-select custom field",
+    inputSchema: {
+      type: "object",
+      properties: {
+        field_id: {
+          type: "string",
+          description: "Custom field ID (e.g., customfield_10020)",
+        },
+        context_id: {
+          type: "string",
+          description: "Optional context ID to filter options",
+        },
+      },
+      required: ["field_id"],
+    },
+  },
+  {
+    name: "jira_get_issue_field_value",
+    description: "Get the value of a specific field on an issue",
+    inputSchema: {
+      type: "object",
+      properties: {
+        issue_key: {
+          type: "string",
+          description: "Issue key (e.g., BCM-123)",
+        },
+        field_id: {
+          type: "string",
+          description: "Field ID (e.g., customfield_10016)",
+        },
+      },
+      required: ["issue_key", "field_id"],
+    },
+  },
+  {
+    name: "jira_set_issue_field_value",
+    description: "Set the value of a specific field on an issue",
+    inputSchema: {
+      type: "object",
+      properties: {
+        issue_key: {
+          type: "string",
+          description: "Issue key (e.g., BCM-123)",
+        },
+        field_id: {
+          type: "string",
+          description: "Field ID (e.g., customfield_10016)",
+        },
+        value: {
+          description: "Value to set (type depends on field: string, number, object, array)",
+        },
+      },
+      required: ["issue_key", "field_id", "value"],
+    },
+  },
+  {
+    name: "jira_get_issue_custom_fields",
+    description: "Get all custom field values for an issue",
+    inputSchema: {
+      type: "object",
+      properties: {
+        issue_key: {
+          type: "string",
+          description: "Issue key (e.g., BCM-123)",
+        },
+        field_ids: {
+          type: "array",
+          items: { type: "string" },
+          description: "Optional list of specific field IDs to retrieve",
+        },
+      },
+      required: ["issue_key"],
+    },
+  },
+
+  // ==================== Time Tracking Tools ====================
+  {
+    name: "jira_get_worklogs",
+    description: "Get all worklogs (time entries) for an issue",
+    inputSchema: {
+      type: "object",
+      properties: {
+        issue_key: {
+          type: "string",
+          description: "Issue key (e.g., BCM-123)",
+        },
+      },
+      required: ["issue_key"],
+    },
+  },
+  {
+    name: "jira_add_worklog",
+    description: "Add a worklog (time entry) to an issue",
+    inputSchema: {
+      type: "object",
+      properties: {
+        issue_key: {
+          type: "string",
+          description: "Issue key (e.g., BCM-123)",
+        },
+        time_spent: {
+          type: "string",
+          description: "Time spent in Jira format (e.g., '3h 30m', '1d', '2w')",
+        },
+        time_spent_seconds: {
+          type: "number",
+          description: "Time spent in seconds (alternative to time_spent)",
+        },
+        started: {
+          type: "string",
+          description: "When the work started (ISO 8601 format, e.g., '2025-12-05T09:00:00.000+0000')",
+        },
+        comment: {
+          type: "string",
+          description: "Description of work done",
+        },
+      },
+      required: ["issue_key"],
+    },
+  },
+  {
+    name: "jira_update_worklog",
+    description: "Update an existing worklog",
+    inputSchema: {
+      type: "object",
+      properties: {
+        issue_key: {
+          type: "string",
+          description: "Issue key (e.g., BCM-123)",
+        },
+        worklog_id: {
+          type: "string",
+          description: "Worklog ID to update",
+        },
+        time_spent: {
+          type: "string",
+          description: "New time spent in Jira format",
+        },
+        time_spent_seconds: {
+          type: "number",
+          description: "New time spent in seconds",
+        },
+        started: {
+          type: "string",
+          description: "New start time (ISO 8601 format)",
+        },
+        comment: {
+          type: "string",
+          description: "New description of work done",
+        },
+      },
+      required: ["issue_key", "worklog_id"],
+    },
+  },
+  {
+    name: "jira_delete_worklog",
+    description: "Delete a worklog from an issue",
+    inputSchema: {
+      type: "object",
+      properties: {
+        issue_key: {
+          type: "string",
+          description: "Issue key (e.g., BCM-123)",
+        },
+        worklog_id: {
+          type: "string",
+          description: "Worklog ID to delete",
+        },
+      },
+      required: ["issue_key", "worklog_id"],
+    },
+  },
+  {
+    name: "jira_get_time_tracking",
+    description: "Get time tracking information (estimates and logged time) for an issue",
+    inputSchema: {
+      type: "object",
+      properties: {
+        issue_key: {
+          type: "string",
+          description: "Issue key (e.g., BCM-123)",
+        },
+      },
+      required: ["issue_key"],
+    },
+  },
+  {
+    name: "jira_set_time_tracking",
+    description: "Set time tracking estimates on an issue",
+    inputSchema: {
+      type: "object",
+      properties: {
+        issue_key: {
+          type: "string",
+          description: "Issue key (e.g., BCM-123)",
+        },
+        original_estimate: {
+          type: "string",
+          description: "Original time estimate (e.g., '2d', '8h')",
+        },
+        remaining_estimate: {
+          type: "string",
+          description: "Remaining time estimate (e.g., '1d', '4h')",
+        },
+      },
+      required: ["issue_key"],
+    },
+  },
+
+  // ==================== Attachment Tools ====================
+  {
+    name: "jira_get_attachments",
+    description: "Get all attachments for an issue",
+    inputSchema: {
+      type: "object",
+      properties: {
+        issue_key: {
+          type: "string",
+          description: "Issue key (e.g., BCM-123)",
+        },
+      },
+      required: ["issue_key"],
+    },
+  },
+  {
+    name: "jira_add_attachment",
+    description: "Add an attachment to an issue. Content should be base64 encoded.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        issue_key: {
+          type: "string",
+          description: "Issue key (e.g., BCM-123)",
+        },
+        filename: {
+          type: "string",
+          description: "Name of the file to attach",
+        },
+        content_base64: {
+          type: "string",
+          description: "File content encoded as base64",
+        },
+      },
+      required: ["issue_key", "filename", "content_base64"],
+    },
+  },
+  {
+    name: "jira_delete_attachment",
+    description: "Delete an attachment from Jira",
+    inputSchema: {
+      type: "object",
+      properties: {
+        attachment_id: {
+          type: "string",
+          description: "Attachment ID to delete",
+        },
+      },
+      required: ["attachment_id"],
+    },
+  },
+  {
+    name: "jira_get_attachment",
+    description: "Get metadata for a specific attachment",
+    inputSchema: {
+      type: "object",
+      properties: {
+        attachment_id: {
+          type: "string",
+          description: "Attachment ID",
+        },
+      },
+      required: ["attachment_id"],
+    },
+  },
+
+  // ==================== Webhook Tools ====================
+  {
+    name: "jira_list_webhooks",
+    description: "List all webhooks registered for this Jira instance",
+    inputSchema: {
+      type: "object",
+      properties: {},
+    },
+  },
+  {
+    name: "jira_get_webhook",
+    description: "Get details of a specific webhook by ID",
+    inputSchema: {
+      type: "object",
+      properties: {
+        webhook_id: {
+          type: "number",
+          description: "Webhook ID",
+        },
+      },
+      required: ["webhook_id"],
+    },
+  },
+  {
+    name: "jira_create_webhook",
+    description: "Register a new webhook. Note: Requires Connect app or OAuth 2.0 scope.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: {
+          type: "string",
+          description: "Display name for the webhook",
+        },
+        url: {
+          type: "string",
+          description: "URL to receive webhook callbacks",
+        },
+        events: {
+          type: "array",
+          items: { type: "string" },
+          description: "Events to subscribe to (e.g., 'jira:issue_created', 'jira:issue_updated')",
+        },
+        jql_filter: {
+          type: "string",
+          description: "Optional JQL filter to restrict which issues trigger the webhook",
+        },
+      },
+      required: ["name", "url", "events"],
+    },
+  },
+  {
+    name: "jira_delete_webhooks",
+    description: "Delete one or more webhooks by their IDs",
+    inputSchema: {
+      type: "object",
+      properties: {
+        webhook_ids: {
+          type: "array",
+          items: { type: "number" },
+          description: "Array of webhook IDs to delete",
+        },
+      },
+      required: ["webhook_ids"],
+    },
+  },
+  {
+    name: "jira_refresh_webhooks",
+    description: "Refresh webhooks to extend their expiration time",
+    inputSchema: {
+      type: "object",
+      properties: {
+        webhook_ids: {
+          type: "array",
+          items: { type: "number" },
+          description: "Array of webhook IDs to refresh",
+        },
+      },
+      required: ["webhook_ids"],
+    },
+  },
+  {
+    name: "jira_get_failed_webhooks",
+    description: "Get list of failed webhook calls that need to be retried",
+    inputSchema: {
+      type: "object",
+      properties: {
+        after: {
+          type: "number",
+          description: "Optional timestamp to get failures after this time",
+        },
+      },
+    },
+  },
+
+  // ==================== Issue Link Tools ====================
+  {
+    name: "jira_list_issue_link_types",
+    description: "List all available issue link types (e.g., Blocks, Relates, Duplicates)",
+    inputSchema: {
+      type: "object",
+      properties: {},
+    },
+  },
+  {
+    name: "jira_get_issue_links",
+    description: "Get all links for a specific issue",
+    inputSchema: {
+      type: "object",
+      properties: {
+        issue_key: {
+          type: "string",
+          description: "Issue key (e.g., BCM-123)",
+        },
+      },
+      required: ["issue_key"],
+    },
+  },
+  {
+    name: "jira_create_issue_link",
+    description: "Create a link between two issues. Use inward_issue for the 'inward' side of the relationship and outward_issue for the 'outward' side. For example, with 'Blocks' type: outward_issue blocks inward_issue.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        type: {
+          type: "string",
+          description: "Link type name (e.g., 'Blocks', 'Relates', 'Duplicate', 'Cloners')",
+        },
+        inward_issue: {
+          type: "string",
+          description: "Issue key for the inward side (e.g., 'is blocked by' side)",
+        },
+        outward_issue: {
+          type: "string",
+          description: "Issue key for the outward side (e.g., 'blocks' side)",
+        },
+        comment: {
+          type: "string",
+          description: "Optional comment on the link",
+        },
+      },
+      required: ["type", "inward_issue", "outward_issue"],
+    },
+  },
+  {
+    name: "jira_delete_issue_link",
+    description: "Delete an issue link by its ID",
+    inputSchema: {
+      type: "object",
+      properties: {
+        link_id: {
+          type: "string",
+          description: "The issue link ID to delete",
+        },
+      },
+      required: ["link_id"],
+    },
+  },
+
+  // ==================== JQL Filter Tools ====================
+  {
+    name: "jira_list_filters",
+    description: "List all filters owned by or shared with the current user",
+    inputSchema: {
+      type: "object",
+      properties: {
+        expand: {
+          type: "string",
+          description: "Optional expand parameter (e.g., 'sharedUsers,subscriptions')",
+        },
+      },
+    },
+  },
+  {
+    name: "jira_get_filter",
+    description: "Get details of a specific filter by ID",
+    inputSchema: {
+      type: "object",
+      properties: {
+        filter_id: {
+          type: "string",
+          description: "Filter ID",
+        },
+        expand: {
+          type: "string",
+          description: "Optional expand parameter",
+        },
+      },
+      required: ["filter_id"],
+    },
+  },
+  {
+    name: "jira_search_filters",
+    description: "Search for filters by name",
+    inputSchema: {
+      type: "object",
+      properties: {
+        filter_name: {
+          type: "string",
+          description: "Name or partial name to search for",
+        },
+        expand: {
+          type: "string",
+          description: "Optional expand parameter",
+        },
+      },
+      required: ["filter_name"],
+    },
+  },
+  {
+    name: "jira_create_filter",
+    description: "Create a new JQL filter",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: {
+          type: "string",
+          description: "Filter name",
+        },
+        jql: {
+          type: "string",
+          description: "JQL query string",
+        },
+        description: {
+          type: "string",
+          description: "Filter description",
+        },
+        favourite: {
+          type: "boolean",
+          description: "Whether to mark as favourite",
+        },
+      },
+      required: ["name", "jql"],
+    },
+  },
+  {
+    name: "jira_update_filter",
+    description: "Update an existing filter",
+    inputSchema: {
+      type: "object",
+      properties: {
+        filter_id: {
+          type: "string",
+          description: "Filter ID to update",
+        },
+        name: {
+          type: "string",
+          description: "New filter name",
+        },
+        jql: {
+          type: "string",
+          description: "New JQL query string",
+        },
+        description: {
+          type: "string",
+          description: "New filter description",
+        },
+        favourite: {
+          type: "boolean",
+          description: "Whether to mark as favourite",
+        },
+      },
+      required: ["filter_id"],
+    },
+  },
+  {
+    name: "jira_delete_filter",
+    description: "Delete a filter",
+    inputSchema: {
+      type: "object",
+      properties: {
+        filter_id: {
+          type: "string",
+          description: "Filter ID to delete",
+        },
+      },
+      required: ["filter_id"],
+    },
+  },
+  {
+    name: "jira_set_filter_favourite",
+    description: "Set or unset a filter as favourite",
+    inputSchema: {
+      type: "object",
+      properties: {
+        filter_id: {
+          type: "string",
+          description: "Filter ID",
+        },
+        favourite: {
+          type: "boolean",
+          description: "Whether to set (true) or unset (false) as favourite",
+        },
+      },
+      required: ["filter_id", "favourite"],
+    },
+  },
+  {
+    name: "jira_get_favourite_filters",
+    description: "Get all favourite filters",
+    inputSchema: {
+      type: "object",
+      properties: {
+        expand: {
+          type: "string",
+          description: "Optional expand parameter",
+        },
+      },
+    },
+  },
+  {
+    name: "jira_execute_filter",
+    description: "Execute a saved filter and return matching issues",
+    inputSchema: {
+      type: "object",
+      properties: {
+        filter_id: {
+          type: "string",
+          description: "Filter ID to execute",
+        },
+        max_results: {
+          type: "number",
+          description: "Maximum number of results (default: 50)",
+          default: 50,
+        },
+      },
+      required: ["filter_id"],
+    },
+  },
+
+  // ==================== Bulk Operations Tools ====================
+  {
+    name: "jira_bulk_transition_issues",
+    description: "Transition multiple issues to a new status with verification",
+    inputSchema: {
+      type: "object",
+      properties: {
+        issue_keys: {
+          type: "array",
+          items: { type: "string" },
+          description: "Array of issue keys to transition (e.g., ['BCM-1', 'BCM-2'])",
+        },
+        transition_name: {
+          type: "string",
+          description: "Target status name (e.g., 'In Progress', 'Done')",
+        },
+      },
+      required: ["issue_keys", "transition_name"],
+    },
+  },
+  {
+    name: "jira_bulk_update_issues",
+    description: "Update multiple issues with the same changes",
+    inputSchema: {
+      type: "object",
+      properties: {
+        issue_keys: {
+          type: "array",
+          items: { type: "string" },
+          description: "Array of issue keys to update",
+        },
+        summary: {
+          type: "string",
+          description: "New summary for all issues",
+        },
+        priority: {
+          type: "string",
+          description: "New priority for all issues",
+        },
+        assignee_id: {
+          type: "string",
+          description: "Assignee account ID (empty string to unassign)",
+        },
+        labels: {
+          type: "array",
+          items: { type: "string" },
+          description: "New labels to set on all issues",
+        },
+      },
+      required: ["issue_keys"],
+    },
+  },
+  {
+    name: "jira_bulk_delete_issues",
+    description: "Delete multiple issues. Warning: This is irreversible!",
+    inputSchema: {
+      type: "object",
+      properties: {
+        issue_keys: {
+          type: "array",
+          items: { type: "string" },
+          description: "Array of issue keys to delete",
+        },
+      },
+      required: ["issue_keys"],
+    },
+  },
+  {
+    name: "jira_bulk_move_to_sprint",
+    description: "Move multiple issues to a sprint with verification",
+    inputSchema: {
+      type: "object",
+      properties: {
+        sprint_id: {
+          type: "number",
+          description: "Target sprint ID",
+        },
+        issue_keys: {
+          type: "array",
+          items: { type: "string" },
+          description: "Array of issue keys to move",
+        },
+      },
+      required: ["sprint_id", "issue_keys"],
+    },
+  },
+  {
+    name: "jira_bulk_add_labels",
+    description: "Add labels to multiple issues (preserves existing labels)",
+    inputSchema: {
+      type: "object",
+      properties: {
+        issue_keys: {
+          type: "array",
+          items: { type: "string" },
+          description: "Array of issue keys",
+        },
+        labels: {
+          type: "array",
+          items: { type: "string" },
+          description: "Labels to add to all issues",
+        },
+      },
+      required: ["issue_keys", "labels"],
+    },
+  },
+  {
+    name: "jira_bulk_assign_issues",
+    description: "Assign multiple issues to the same user",
+    inputSchema: {
+      type: "object",
+      properties: {
+        issue_keys: {
+          type: "array",
+          items: { type: "string" },
+          description: "Array of issue keys",
+        },
+        assignee_id: {
+          type: "string",
+          description: "Account ID to assign to (null or empty to unassign)",
+        },
+      },
+      required: ["issue_keys"],
+    },
+  },
+
   // ==================== MCP Info Tools ====================
   {
     name: "jira_mcp_version",
@@ -838,6 +1847,87 @@ This tool fetches an EPIC and all its child tasks, then generates:
         },
       },
       required: ["epic_key"],
+    },
+  },
+
+  // ==================== Account Management Tools ====================
+  {
+    name: "jira_list_accounts",
+    description: "List all configured Jira accounts. Shows which account is currently active.",
+    inputSchema: {
+      type: "object",
+      properties: {},
+    },
+  },
+  {
+    name: "jira_add_account",
+    description: "Add a new Jira account for multi-account management. Credentials are stored securely in-memory.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: {
+          type: "string",
+          description: "Unique identifier for the account (lowercase, e.g., 'bodywave', 'brainsway')",
+        },
+        name: {
+          type: "string",
+          description: "Display name for the account",
+        },
+        url: {
+          type: "string",
+          description: "Jira instance URL (e.g., https://bodywave.atlassian.net)",
+        },
+        email: {
+          type: "string",
+          description: "User email for authentication",
+        },
+        api_key: {
+          type: "string",
+          description: "API token for authentication",
+        },
+      },
+      required: ["id", "name", "url", "email", "api_key"],
+    },
+  },
+  {
+    name: "jira_remove_account",
+    description: "Remove a configured Jira account. Cannot remove the only account or the active account if it's the last one.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: {
+          type: "string",
+          description: "Account ID to remove",
+        },
+      },
+      required: ["id"],
+    },
+  },
+  {
+    name: "jira_switch_account",
+    description: "Switch to a different Jira account. All subsequent operations will use this account.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: {
+          type: "string",
+          description: "Account ID to switch to",
+        },
+      },
+      required: ["id"],
+    },
+  },
+  {
+    name: "jira_test_account",
+    description: "Test connection to a Jira account by fetching the current user.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: {
+          type: "string",
+          description: "Account ID to test (tests active account if not provided)",
+        },
+      },
     },
   },
 ];
@@ -946,14 +2036,14 @@ async function generateEpicWorkflow(
   baseBranch: string
 ): Promise<EpicWorkflowResult> {
   // Fetch the EPIC
-  const epic = await jiraClient.getIssue(epicKey);
+  const epic = await getJiraClient().getIssue(epicKey);
 
   if (epic.issueType !== "Epic") {
     throw new Error(`${epicKey} is not an Epic (found: ${epic.issueType})`);
   }
 
   // Fetch all child tasks
-  const searchResult = await jiraClient.searchIssues(
+  const searchResult = await getJiraClient().searchIssues(
     `parent = ${epicKey} ORDER BY created ASC`,
     100
   );
@@ -1053,10 +2143,10 @@ async function handleToolCall(
     switch (name) {
       // Issue tools
       case "jira_get_issue":
-        return await jiraClient.getIssue(args.issue_key as string);
+        return await getJiraClient().getIssue(args.issue_key as string);
 
       case "jira_create_issue":
-        return await jiraClient.createIssue({
+        return await getJiraClient().createIssue({
           projectKey: args.project_key as string,
           summary: args.summary as string,
           description: args.description as string | undefined,
@@ -1069,7 +2159,7 @@ async function handleToolCall(
         });
 
       case "jira_update_issue":
-        return await jiraClient.updateIssue(args.issue_key as string, {
+        return await getJiraClient().updateIssue(args.issue_key as string, {
           summary: args.summary as string | undefined,
           description: args.description as string | undefined,
           priority: args.priority as string | undefined,
@@ -1080,23 +2170,50 @@ async function handleToolCall(
         });
 
       case "jira_delete_issue":
-        await jiraClient.deleteIssue(args.issue_key as string);
+        await getJiraClient().deleteIssue(args.issue_key as string);
         return { success: true, message: `Issue ${args.issue_key} deleted` };
 
       case "jira_search_issues":
-        return await jiraClient.searchIssues(
+        return await getJiraClient().searchIssues(
           args.jql as string,
           args.max_results as number | undefined
         );
 
       case "jira_add_comment":
-        return await jiraClient.addComment(
+        return await getJiraClient().addComment(
           args.issue_key as string,
           args.comment as string
         );
 
+      case "jira_get_comments":
+        return await getJiraClient().getComments(
+          args.issue_key as string,
+          args.max_results as number | undefined,
+          args.start_at as number | undefined
+        );
+
+      case "jira_get_comment":
+        return await getJiraClient().getComment(
+          args.issue_key as string,
+          args.comment_id as string
+        );
+
+      case "jira_update_comment":
+        return await getJiraClient().updateComment(
+          args.issue_key as string,
+          args.comment_id as string,
+          args.comment as string
+        );
+
+      case "jira_delete_comment":
+        await getJiraClient().deleteComment(
+          args.issue_key as string,
+          args.comment_id as string
+        );
+        return { success: true, message: `Comment ${args.comment_id} deleted` };
+
       case "jira_transition_issue": {
-        const transitions = await jiraClient.getTransitions(args.issue_key as string);
+        const transitions = await getJiraClient().getTransitions(args.issue_key as string);
         const targetTransition = transitions.find(
           (t) => t.name.toLowerCase() === (args.transition_name as string).toLowerCase()
         );
@@ -1104,16 +2221,16 @@ async function handleToolCall(
           const available = transitions.map((t) => t.name).join(", ");
           throw new Error(`Transition '${args.transition_name}' not available. Available: ${available}`);
         }
-        await jiraClient.transitionIssue(args.issue_key as string, targetTransition.id);
+        await getJiraClient().transitionIssue(args.issue_key as string, targetTransition.id);
         return { success: true, message: `Issue transitioned to '${args.transition_name}'` };
       }
 
       // Project tools
       case "jira_list_projects":
-        return await jiraClient.listProjects();
+        return await getJiraClient().listProjects();
 
       case "jira_get_project":
-        return await jiraClient.getProject(args.project_key as string);
+        return await getJiraClient().getProject(args.project_key as string);
 
       case "jira_create_project": {
         const templateMap: Record<string, ProjectTemplate> = {
@@ -1130,7 +2247,7 @@ async function handleToolCall(
           service_desk: ProjectTypeKey.SERVICE_DESK,
         };
 
-        return await jiraClient.createProject({
+        return await getJiraClient().createProject({
           key: args.key as string,
           name: args.name as string,
           description: args.description as string | undefined,
@@ -1141,23 +2258,23 @@ async function handleToolCall(
       }
 
       case "jira_validate_project_key":
-        return await jiraClient.validateProjectKey(args.key as string);
+        return await getJiraClient().validateProjectKey(args.key as string);
 
       case "jira_delete_project":
-        return await jiraClient.deleteProject(args.project_key as string);
+        return await getJiraClient().deleteProject(args.project_key as string);
 
       // Sprint tools
       case "jira_list_sprints":
-        return await jiraClient.listSprintsForBoard(
+        return await getJiraClient().listSprintsForBoard(
           args.board_id as number,
           args.state as SprintState | undefined
         );
 
       case "jira_get_sprint":
-        return await jiraClient.getSprint(args.sprint_id as number);
+        return await getJiraClient().getSprint(args.sprint_id as number);
 
       case "jira_create_sprint":
-        return await jiraClient.createSprint({
+        return await getJiraClient().createSprint({
           boardId: args.board_id as number,
           name: args.name as string,
           startDate: args.start_date as string | undefined,
@@ -1166,7 +2283,7 @@ async function handleToolCall(
         });
 
       case "jira_update_sprint":
-        return await jiraClient.updateSprint(args.sprint_id as number, {
+        return await getJiraClient().updateSprint(args.sprint_id as number, {
           name: args.name as string | undefined,
           startDate: args.start_date as string | undefined,
           endDate: args.end_date as string | undefined,
@@ -1174,24 +2291,24 @@ async function handleToolCall(
         });
 
       case "jira_start_sprint":
-        return await jiraClient.startSprint(
+        return await getJiraClient().startSprint(
           args.sprint_id as number,
           args.start_date as string,
           args.end_date as string
         );
 
       case "jira_complete_sprint":
-        return await jiraClient.completeSprint(args.sprint_id as number);
+        return await getJiraClient().completeSprint(args.sprint_id as number);
 
       case "jira_delete_sprint":
-        await jiraClient.deleteSprint(args.sprint_id as number);
+        await getJiraClient().deleteSprint(args.sprint_id as number);
         return { success: true, message: `Sprint ${args.sprint_id} deleted` };
 
       case "jira_get_sprint_issues":
-        return await jiraClient.getSprintIssues(args.sprint_id as number);
+        return await getJiraClient().getSprintIssues(args.sprint_id as number);
 
       case "jira_move_issues_to_sprint":
-        await jiraClient.moveIssuesToSprint(
+        await getJiraClient().moveIssuesToSprint(
           args.sprint_id as number,
           args.issue_keys as string[]
         );
@@ -1200,35 +2317,51 @@ async function handleToolCall(
           message: `Moved ${(args.issue_keys as string[]).length} issues to sprint ${args.sprint_id}`,
         };
 
+      // Sprint Analytics tools
+      case "jira_get_sprint_report":
+        return await getJiraClient().getSprintReport(args.sprint_id as number);
+
+      case "jira_get_sprint_velocity":
+        return await getJiraClient().getSprintVelocity(args.sprint_id as number);
+
+      case "jira_get_velocity_report":
+        return await getJiraClient().getVelocityReport(
+          args.board_id as number,
+          args.sprint_count as number | undefined
+        );
+
+      case "jira_get_sprint_burndown":
+        return await getJiraClient().getSprintBurndown(args.sprint_id as number);
+
       // Board tools
       case "jira_list_boards":
-        return await jiraClient.listBoards(args.project_key as string | undefined);
+        return await getJiraClient().listBoards(args.project_key as string | undefined);
 
       case "jira_get_board":
-        return await jiraClient.getBoard(args.board_id as number);
+        return await getJiraClient().getBoard(args.board_id as number);
 
       // User tools
       case "jira_get_current_user":
-        return await jiraClient.getCurrentUser();
+        return await getJiraClient().getCurrentUser();
 
       case "jira_search_users":
-        return await jiraClient.searchUsers(args.query as string);
+        return await getJiraClient().searchUsers(args.query as string);
 
       // Field Configuration tools
       case "jira_get_create_meta":
-        return await jiraClient.getCreateMeta(
+        return await getJiraClient().getCreateMeta(
           args.project_key as string,
           args.issue_type as string | undefined
         );
 
       case "jira_list_field_configurations":
-        return await jiraClient.getFieldConfigurations();
+        return await getJiraClient().getFieldConfigurations();
 
       case "jira_get_field_configuration":
-        return await jiraClient.getFieldConfiguration(args.config_id as string);
+        return await getJiraClient().getFieldConfiguration(args.config_id as string);
 
       case "jira_get_field_configuration_items":
-        return await jiraClient.getFieldConfigurationItems(args.config_id as string);
+        return await getJiraClient().getFieldConfigurationItems(args.config_id as string);
 
       case "jira_update_field_configuration_item": {
         const updates: Partial<{ isRequired: boolean; isHidden: boolean; description: string }> = {};
@@ -1236,7 +2369,7 @@ async function handleToolCall(
         if (args.is_hidden !== undefined) updates.isHidden = args.is_hidden as boolean;
         if (args.description !== undefined) updates.description = args.description as string;
 
-        await jiraClient.updateFieldConfigurationItem(
+        await getJiraClient().updateFieldConfigurationItem(
           args.config_id as string,
           args.field_id as string,
           updates
@@ -1246,6 +2379,236 @@ async function handleToolCall(
           message: `Field ${args.field_id} updated in configuration ${args.config_id}`,
         };
       }
+
+      // Custom Field tools
+      case "jira_list_fields":
+        return await getJiraClient().listFields();
+
+      case "jira_list_custom_fields":
+        return await getJiraClient().listCustomFields();
+
+      case "jira_get_field":
+        return await getJiraClient().getField(args.field_id as string);
+
+      case "jira_get_field_options":
+        return await getJiraClient().getFieldOptions(
+          args.field_id as string,
+          args.context_id as string | undefined
+        );
+
+      case "jira_get_issue_field_value":
+        return await getJiraClient().getIssueFieldValue(
+          args.issue_key as string,
+          args.field_id as string
+        );
+
+      case "jira_set_issue_field_value":
+        return await getJiraClient().setIssueFieldValue(
+          args.issue_key as string,
+          args.field_id as string,
+          args.value
+        );
+
+      case "jira_get_issue_custom_fields":
+        return await getJiraClient().getIssueCustomFields(
+          args.issue_key as string,
+          args.field_ids as string[] | undefined
+        );
+
+      // Time Tracking tools
+      case "jira_get_worklogs":
+        return await getJiraClient().getWorklogs(args.issue_key as string);
+
+      case "jira_add_worklog":
+        return await getJiraClient().addWorklog(args.issue_key as string, {
+          timeSpent: args.time_spent as string | undefined,
+          timeSpentSeconds: args.time_spent_seconds as number | undefined,
+          started: args.started as string | undefined,
+          comment: args.comment as string | undefined,
+        });
+
+      case "jira_update_worklog":
+        return await getJiraClient().updateWorklog(
+          args.issue_key as string,
+          args.worklog_id as string,
+          {
+            timeSpent: args.time_spent as string | undefined,
+            timeSpentSeconds: args.time_spent_seconds as number | undefined,
+            started: args.started as string | undefined,
+            comment: args.comment as string | undefined,
+          }
+        );
+
+      case "jira_delete_worklog":
+        await getJiraClient().deleteWorklog(
+          args.issue_key as string,
+          args.worklog_id as string
+        );
+        return { success: true, message: `Worklog ${args.worklog_id} deleted` };
+
+      case "jira_get_time_tracking":
+        return await getJiraClient().getTimeTracking(args.issue_key as string);
+
+      case "jira_set_time_tracking":
+        return await getJiraClient().setTimeTracking(
+          args.issue_key as string,
+          args.original_estimate as string | undefined,
+          args.remaining_estimate as string | undefined
+        );
+
+      // Attachment tools
+      case "jira_get_attachments":
+        return await getJiraClient().getAttachments(args.issue_key as string);
+
+      case "jira_add_attachment":
+        return await getJiraClient().addAttachment(
+          args.issue_key as string,
+          args.filename as string,
+          args.content_base64 as string
+        );
+
+      case "jira_delete_attachment":
+        await getJiraClient().deleteAttachment(args.attachment_id as string);
+        return { success: true, message: `Attachment ${args.attachment_id} deleted` };
+
+      case "jira_get_attachment":
+        return await getJiraClient().getAttachment(args.attachment_id as string);
+
+      // Webhook tools
+      case "jira_list_webhooks":
+        return await getJiraClient().listWebhooks();
+
+      case "jira_get_webhook":
+        return await getJiraClient().getWebhook(args.webhook_id as number);
+
+      case "jira_create_webhook":
+        return await getJiraClient().createWebhook({
+          name: args.name as string,
+          url: args.url as string,
+          events: args.events as string[],
+          filters: args.jql_filter
+            ? { issueRelatedEventsSection: args.jql_filter as string }
+            : undefined,
+        });
+
+      case "jira_delete_webhooks":
+        await getJiraClient().deleteWebhooks(args.webhook_ids as number[]);
+        return { success: true, message: `Deleted ${(args.webhook_ids as number[]).length} webhook(s)` };
+
+      case "jira_refresh_webhooks":
+        return await getJiraClient().refreshWebhooks(args.webhook_ids as number[]);
+
+      case "jira_get_failed_webhooks":
+        return await getJiraClient().getFailedWebhooks(args.after as number | undefined);
+
+      // Issue Link tools
+      case "jira_list_issue_link_types":
+        return await getJiraClient().listIssueLinkTypes();
+
+      case "jira_get_issue_links":
+        return await getJiraClient().getIssueLinks(args.issue_key as string);
+
+      case "jira_create_issue_link":
+        return await getJiraClient().createIssueLink({
+          type: args.type as string,
+          inwardIssue: args.inward_issue as string,
+          outwardIssue: args.outward_issue as string,
+          comment: args.comment as string | undefined,
+        });
+
+      case "jira_delete_issue_link":
+        await getJiraClient().deleteIssueLink(args.link_id as string);
+        return { success: true, message: `Issue link ${args.link_id} deleted` };
+
+      // JQL Filter tools
+      case "jira_list_filters":
+        return await getJiraClient().listFilters(args.expand as string | undefined);
+
+      case "jira_get_filter":
+        return await getJiraClient().getFilter(
+          args.filter_id as string,
+          args.expand as string | undefined
+        );
+
+      case "jira_search_filters":
+        return await getJiraClient().searchFilters(
+          args.filter_name as string,
+          args.expand as string | undefined
+        );
+
+      case "jira_create_filter":
+        return await getJiraClient().createFilter({
+          name: args.name as string,
+          jql: args.jql as string,
+          description: args.description as string | undefined,
+          favourite: args.favourite as boolean | undefined,
+        });
+
+      case "jira_update_filter":
+        return await getJiraClient().updateFilter(args.filter_id as string, {
+          name: args.name as string | undefined,
+          jql: args.jql as string | undefined,
+          description: args.description as string | undefined,
+          favourite: args.favourite as boolean | undefined,
+        });
+
+      case "jira_delete_filter":
+        await getJiraClient().deleteFilter(args.filter_id as string);
+        return { success: true, message: `Filter ${args.filter_id} deleted` };
+
+      case "jira_set_filter_favourite":
+        return await getJiraClient().setFilterFavourite(
+          args.filter_id as string,
+          args.favourite as boolean
+        );
+
+      case "jira_get_favourite_filters":
+        return await getJiraClient().getFavouriteFilters(args.expand as string | undefined);
+
+      case "jira_execute_filter":
+        return await getJiraClient().executeFilter(
+          args.filter_id as string,
+          args.max_results as number | undefined
+        );
+
+      // Bulk operations tools
+      case "jira_bulk_transition_issues":
+        return await getJiraClient().bulkTransitionIssues(
+          args.issue_keys as string[],
+          args.transition_name as string
+        );
+
+      case "jira_bulk_update_issues":
+        return await getJiraClient().bulkUpdateIssues(
+          args.issue_keys as string[],
+          {
+            summary: args.summary as string | undefined,
+            priority: args.priority as string | undefined,
+            assigneeId: args.assignee_id as string | undefined,
+            labels: args.labels as string[] | undefined,
+          }
+        );
+
+      case "jira_bulk_delete_issues":
+        return await getJiraClient().bulkDeleteIssues(args.issue_keys as string[]);
+
+      case "jira_bulk_move_to_sprint":
+        return await getJiraClient().bulkMoveToSprintWithVerification(
+          args.sprint_id as number,
+          args.issue_keys as string[]
+        );
+
+      case "jira_bulk_add_labels":
+        return await getJiraClient().bulkAddLabels(
+          args.issue_keys as string[],
+          args.labels as string[]
+        );
+
+      case "jira_bulk_assign_issues":
+        return await getJiraClient().bulkAssignIssues(
+          args.issue_keys as string[],
+          (args.assignee_id as string) || null
+        );
 
       // MCP Info tools
       case "jira_mcp_version":
@@ -1264,6 +2627,56 @@ async function handleToolCall(
           args.epic_key as string,
           (args.base_branch as string) || "main"
         );
+
+      // Account Management tools
+      case "jira_list_accounts":
+        return {
+          accounts: accountManager.listAccounts(),
+          activeAccountId: accountManager.getActiveAccount()?.id || null,
+          totalAccounts: accountManager.getAccountCount(),
+        };
+
+      case "jira_add_account": {
+        const newAccount = accountManager.addAccount({
+          id: args.id as string,
+          name: args.name as string,
+          url: args.url as string,
+          email: args.email as string,
+          apiKey: args.api_key as string,
+        });
+        return {
+          success: true,
+          message: `Account '${newAccount.id}' added successfully`,
+          account: newAccount,
+        };
+      }
+
+      case "jira_remove_account": {
+        const removed = accountManager.removeAccount(args.id as string);
+        return {
+          success: removed,
+          message: removed
+            ? `Account '${args.id}' removed successfully`
+            : `Account '${args.id}' not found`,
+        };
+      }
+
+      case "jira_switch_account": {
+        const switchedAccount = accountManager.setActiveAccount(args.id as string);
+        return {
+          success: true,
+          message: `Switched to account '${switchedAccount.id}'`,
+          account: switchedAccount,
+        };
+      }
+
+      case "jira_test_account": {
+        const accountId = (args.id as string) || accountManager.getActiveAccount()?.id;
+        if (!accountId) {
+          return { success: false, error: "No account specified and no active account" };
+        }
+        return await accountManager.testConnection(accountId);
+      }
 
       default:
         throw new Error(`Unknown tool: ${name}`);
