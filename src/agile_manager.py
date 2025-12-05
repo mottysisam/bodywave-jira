@@ -299,10 +299,9 @@ class AgileManager:
                 # Sprint is in PI if it overlaps with PI dates
                 if sprint.start_date <= pi.end_date and sprint.end_date >= pi.start_date:
                     pi_sprints.append(sprint)
-            elif sprint.start_date:
+            elif sprint.start_date and pi.start_date <= sprint.start_date <= pi.end_date:
                 # Only start date - check if within PI
-                if pi.start_date <= sprint.start_date <= pi.end_date:
-                    pi_sprints.append(sprint)
+                pi_sprints.append(sprint)
 
         return sorted(pi_sprints, key=lambda s: s.start_date or date.min)
 

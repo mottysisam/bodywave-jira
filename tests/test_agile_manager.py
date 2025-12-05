@@ -9,7 +9,7 @@ import pytest
 
 from src.agile_manager import AgileManager
 from src.config import ProjectsConfig
-from src.models import ProgramIncrement, Sprint, SprintState
+from src.models import Sprint, SprintState
 
 
 class TestAgileManagerPI:

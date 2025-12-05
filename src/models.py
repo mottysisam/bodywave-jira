@@ -8,7 +8,7 @@ from datetime import date, datetime
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class IssueType(str, Enum):
@@ -51,13 +51,13 @@ class SprintState(str, Enum):
 class User(BaseModel):
     """Jira user representation."""
 
-    model_config = ConfigDict(extra="ignore")
+    model_config = ConfigDict(extra="ignore", populate_by_name=True)
 
     account_id: str = Field(..., description="Atlassian account ID")
     display_name: str = Field(..., description="User display name")
     email_address: str | None = Field(None, description="User email")
     active: bool = Field(True, description="Is user active")
-    avatar_url: str | None = Field(None, alias="avatarUrls")
+    avatar_url: str | None = Field(None, description="Avatar URL")
 
     @classmethod
     def from_jira_response(cls, data: dict[str, Any]) -> "User":

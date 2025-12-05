@@ -2,15 +2,14 @@
 Pytest configuration and fixtures for Bodywave Jira MCP Server tests.
 """
 
-import json
-from datetime import date
-from typing import Any, Generator
-from unittest.mock import AsyncMock, MagicMock, patch
+from collections.abc import Generator
+from typing import Any
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from src.config import Config, ProjectsConfig
-from src.models import Issue, Project, Sprint, SprintState
+from src.models import Issue, Project, Sprint
 
 
 @pytest.fixture
@@ -163,7 +162,7 @@ def sample_sprint(sample_sprint_response: dict[str, Any]) -> Sprint:
 
 
 @pytest.fixture
-def mock_httpx_client() -> Generator[AsyncMock, None, None]:
+def mock_httpx_client() -> Generator[AsyncMock]:
     """Mock httpx.AsyncClient for API tests."""
     with patch("httpx.AsyncClient") as mock:
         client_instance = AsyncMock()

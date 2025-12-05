@@ -410,7 +410,7 @@ def create_auth_provider(
         warnings.warn(
             "API Token authentication is deprecated as of January 2026. "
             "Please migrate to OAuth 2.0.",
-            DeprecationWarning,
+            DeprecationWarning, stacklevel=2,
         )
         return APITokenAuth(email=email, token=token)
 

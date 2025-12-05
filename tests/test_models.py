@@ -2,10 +2,8 @@
 Tests for data models.
 """
 
-from datetime import date, datetime
+from datetime import date
 from typing import Any
-
-import pytest
 
 from src.models import (
     Board,

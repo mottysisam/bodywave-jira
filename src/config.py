@@ -194,7 +194,7 @@ def load_projects_config(config_path: str | Path | None = None) -> ProjectsConfi
         raise ConfigurationError(f"Config file not found: {config_path}")
 
     try:
-        with open(config_path, "r") as f:
+        with open(config_path) as f:
             data = json.load(f)
         return ProjectsConfig(data)
     except json.JSONDecodeError as e:

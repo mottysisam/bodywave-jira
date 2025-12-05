@@ -5,10 +5,10 @@ Provides typed methods for all common Jira operations including
 issue CRUD, search, project management, and sprint operations.
 """
 
-import structlog
 from typing import Any
 
 import httpx
+import structlog
 from tenacity import (
     retry,
     retry_if_exception_type,
@@ -16,7 +16,7 @@ from tenacity import (
     wait_exponential,
 )
 
-from src.auth import AuthProvider, APITokenAuth, OAuth2Auth, create_auth_provider
+from src.auth import AuthProvider, OAuth2Auth, create_auth_provider
 from src.config import Config
 from src.exceptions import (
     APIError,
@@ -319,7 +319,7 @@ class JiraClient:
             )
             return Issue.from_jira_response(data)
         except NotFoundError:
-            raise IssueNotFoundError(issue_key)
+            raise IssueNotFoundError(issue_key) from None
 
     async def update_issue(
         self,
@@ -354,6 +354,7 @@ class JiraClient:
             priority=priority,
             assignee_id=assignee_id,
             labels=labels,
+            status=None,
             story_points=story_points,
         )
 
@@ -365,7 +366,7 @@ class JiraClient:
         try:
             await self._request("PUT", f"/issue/{issue_key}", json=payload)
         except NotFoundError:
-            raise IssueNotFoundError(issue_key)
+            raise IssueNotFoundError(issue_key) from None
 
         logger.info("Updated issue", key=issue_key)
         return await self.get_issue(issue_key)
@@ -388,7 +389,7 @@ class JiraClient:
             )
             logger.info("Deleted issue", key=issue_key)
         except NotFoundError:
-            raise IssueNotFoundError(issue_key)
+            raise IssueNotFoundError(issue_key) from None
 
     async def transition_issue(self, issue_key: str, transition_name: str) -> Issue:
         """Transition an issue to a new status.
@@ -558,7 +559,7 @@ class JiraClient:
             )
             return Project.from_jira_response(data)
         except NotFoundError:
-            raise ProjectNotFoundError(project_key)
+            raise ProjectNotFoundError(project_key) from None
 
     async def list_projects(self) -> list[Project]:
         """List all accessible projects.
@@ -643,7 +644,7 @@ class JiraClient:
             )
             return Board.from_jira_response(data)
         except NotFoundError:
-            raise BoardNotFoundError(board_id)
+            raise BoardNotFoundError(board_id) from None
 
     async def list_boards(self, project_key: str | None = None) -> list[Board]:
         """List boards, optionally filtered by project.
@@ -690,7 +691,7 @@ class JiraClient:
             )
             return Sprint.from_jira_response(data)
         except NotFoundError:
-            raise SprintNotFoundError(sprint_id)
+            raise SprintNotFoundError(sprint_id) from None
 
     async def list_sprints(
         self,

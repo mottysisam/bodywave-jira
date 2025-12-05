@@ -10,11 +10,11 @@ Main components:
 - MCPOrchestrator: MCP server for AI agent integration
 """
 
-from src.jira_client import JiraClient
 from src.agile_manager import AgileManager
-from src.mcp_orchestrator import MCPOrchestrator
 from src.config import Config, load_config
-from src.models import Issue, Project, Sprint, ProgramIncrement
+from src.jira_client import JiraClient
+from src.mcp_orchestrator import MCPOrchestrator
+from src.models import Issue, ProgramIncrement, Project, Sprint
 
 __version__ = "0.1.0"
 __all__ = [

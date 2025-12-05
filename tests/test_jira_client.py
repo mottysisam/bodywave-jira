@@ -16,7 +16,6 @@ from src.exceptions import (
     ValidationError,
 )
 from src.jira_client import JiraClient
-from src.models import Issue, Project
 
 
 class TestJiraClientInit:

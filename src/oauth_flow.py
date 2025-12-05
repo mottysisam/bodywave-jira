@@ -13,9 +13,10 @@ import asyncio
 import json
 import secrets
 import webbrowser
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse, urlencode
+from typing import Any
+from urllib.parse import parse_qs, urlencode, urlparse
 
 import httpx
 
@@ -73,7 +74,7 @@ class OAuthCallbackHandler(BaseHTTPRequestHandler):
         """
         self.wfile.write(html.encode())
 
-    def log_message(self, format: str, *args) -> None:
+    def log_message(self, format_str: str, *args: object) -> None:
         """Suppress HTTP server logs."""
         pass
 
@@ -114,7 +115,7 @@ async def exchange_code_for_tokens(
     client_id: str,
     client_secret: str,
     redirect_uri: str,
-) -> dict:
+) -> dict[str, Any]:
     """Exchange authorization code for access and refresh tokens."""
     async with httpx.AsyncClient() as client:
         response = await client.post(
@@ -131,10 +132,11 @@ async def exchange_code_for_tokens(
         if response.status_code != 200:
             raise Exception(f"Token exchange failed: {response.text}")
 
-        return response.json()
+        result: dict[str, Any] = response.json()
+        return result
 
 
-async def get_accessible_resources(access_token: str) -> list[dict]:
+async def get_accessible_resources(access_token: str) -> list[dict[str, Any]]:
     """Get accessible Jira Cloud resources."""
     async with httpx.AsyncClient() as client:
         response = await client.get(
@@ -145,10 +147,11 @@ async def get_accessible_resources(access_token: str) -> list[dict]:
         if response.status_code != 200:
             raise Exception(f"Failed to get resources: {response.text}")
 
-        return response.json()
+        result: list[dict[str, Any]] = response.json()
+        return result
 
 
-def save_tokens(tokens: dict, cloud_id: str, site_name: str, site_url: str, set_default: bool = False) -> None:
+def save_tokens(tokens: dict[str, Any], cloud_id: str, site_name: str, site_url: str, set_default: bool = False) -> None:
     """Save tokens to accounts manager."""
     from src.accounts import account_manager
 
@@ -177,13 +180,14 @@ def save_tokens(tokens: dict, cloud_id: str, site_name: str, site_url: str, set_
     print(f"\n✅ Account '{site_name}' saved")
 
 
-def load_tokens() -> dict | None:
+def load_tokens() -> dict[str, Any] | None:
     """Load tokens from file."""
     if not TOKEN_FILE.exists():
         return None
 
     try:
-        return json.loads(TOKEN_FILE.read_text())
+        result: dict[str, Any] = json.loads(TOKEN_FILE.read_text())
+        return result
     except Exception:
         return None
 
@@ -192,7 +196,7 @@ async def refresh_access_token(
     refresh_token: str,
     client_id: str,
     client_secret: str,
-) -> dict:
+) -> dict[str, Any]:
     """Refresh the access token."""
     async with httpx.AsyncClient() as client:
         response = await client.post(
@@ -208,7 +212,8 @@ async def refresh_access_token(
         if response.status_code != 200:
             raise Exception(f"Token refresh failed: {response.text}")
 
-        return response.json()
+        result: dict[str, Any] = response.json()
+        return result
 
 
 def run_oauth_flow() -> None:
@@ -241,7 +246,7 @@ def run_oauth_flow() -> None:
         state=state,
     )
 
-    print(f"\n📋 Opening browser for authorization...")
+    print("\n📋 Opening browser for authorization...")
     print(f"   If browser doesn't open, visit:\n   {auth_url}\n")
 
     # Start local server to receive callback
@@ -251,7 +256,7 @@ def run_oauth_flow() -> None:
     # Open browser
     webbrowser.open(auth_url)
 
-    print(f"⏳ Waiting for authorization (timeout: 2 minutes)...")
+    print("⏳ Waiting for authorization (timeout: 2 minutes)...")
 
     # Wait for callback
     while OAuthCallbackHandler.auth_code is None and OAuthCallbackHandler.error is None:
@@ -268,16 +273,23 @@ def run_oauth_flow() -> None:
         return
 
     code = OAuthCallbackHandler.auth_code
+    assert code is not None, "Authorization code should not be None at this point"
     print("\n✅ Authorization code received")
 
     # Exchange code for tokens
     print("🔄 Exchanging code for tokens...")
 
-    async def complete_flow():
+    # Capture validated credentials (mypy needs help with closure)
+    client_id = config.jira_oauth_client_id
+    client_secret = config.jira_oauth_client_secret
+    assert client_id is not None
+    assert client_secret is not None
+
+    async def complete_flow() -> None:
         tokens = await exchange_code_for_tokens(
             code=code,
-            client_id=config.jira_oauth_client_id,
-            client_secret=config.jira_oauth_client_secret,
+            client_id=client_id,
+            client_secret=client_secret,
             redirect_uri=redirect_uri,
         )
 

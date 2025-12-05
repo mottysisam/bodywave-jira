@@ -9,10 +9,11 @@ Provides automated workflows for:
 """
 
 import asyncio
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any
 
 import structlog
 
@@ -80,7 +81,7 @@ class AutomationEngine:
         self.client = client
         self.rules: dict[str, WorkflowRule] = {}
         self.executions: list[WorkflowExecution] = []
-        self._handlers: dict[WorkflowTrigger, list[Callable]] = {}
+        self._handlers: dict[WorkflowTrigger, list[Callable[..., Any]]] = {}
 
     def register_rule(self, rule: WorkflowRule) -> None:
         """Register an automation rule.
@@ -92,7 +93,7 @@ class AutomationEngine:
         logger.info("Registered automation rule", name=rule.name, trigger=rule.trigger.value)
 
     def register_handler(
-        self, trigger: WorkflowTrigger, handler: Callable
+        self, trigger: WorkflowTrigger, handler: Callable[..., Any]
     ) -> None:
         """Register a handler function for a trigger.
 
@@ -285,7 +286,21 @@ class AutomationEngine:
         if not issue_key or not field_name:
             return {"error": "Missing issue_key or field"}
 
-        await self.client.update_issue(issue_key, {field_name: value})
+        # Map field names to update_issue kwargs
+        kwargs: dict[str, Any] = {}
+        if field_name == "summary":
+            kwargs["summary"] = value
+        elif field_name == "description":
+            kwargs["description"] = value
+        elif field_name == "priority":
+            kwargs["priority"] = value
+        elif field_name == "labels":
+            kwargs["labels"] = value
+        elif field_name == "assignee":
+            kwargs["assignee_id"] = value
+
+        if kwargs:
+            await self.client.update_issue(issue_key, **kwargs)
         return {"updated": issue_key, "field": field_name}
 
     async def _action_move_to_sprint(
@@ -306,7 +321,7 @@ class AutomationEngine:
         if not sprint_id or not issue_keys:
             return {"error": "Missing sprint_id or issue_keys"}
 
-        await self.client.move_issues_to_sprint(sprint_id, issue_keys)
+        await self.client.add_issues_to_sprint(sprint_id, issue_keys)
         return {"moved": issue_keys, "sprint_id": sprint_id}
 
 
@@ -511,7 +526,7 @@ class BulkOperations:
 
         for key in issue_keys:
             try:
-                await self.client.update_issue(key, {"assignee": {"accountId": assignee}})
+                await self.client.update_issue(key, assignee_id=assignee)
                 results[key] = True
                 logger.info("Assigned issue", key=key, assignee=assignee)
             except Exception as e:
@@ -538,10 +553,10 @@ class BulkOperations:
             try:
                 # Get current labels
                 issue = await self.client.get_issue(key)
-                current_labels = issue.get("fields", {}).get("labels", [])
+                current_labels = issue.labels or []
                 new_labels = list(set(current_labels + labels))
 
-                await self.client.update_issue(key, {"labels": new_labels})
+                await self.client.update_issue(key, labels=new_labels)
                 results[key] = True
                 logger.info("Added labels", key=key, labels=labels)
             except Exception as e:
@@ -563,7 +578,7 @@ class BulkOperations:
             True if successful.
         """
         try:
-            await self.client.move_issues_to_sprint(sprint_id, issue_keys)
+            await self.client.add_issues_to_sprint(sprint_id, issue_keys)
             logger.info("Moved issues to sprint", count=len(issue_keys), sprint=sprint_id)
             return True
         except Exception as e:
@@ -582,7 +597,7 @@ class ScheduledTasks:
         """
         self.engine = engine
         self._running = False
-        self._tasks: list[asyncio.Task] = []
+        self._tasks: list[asyncio.Task[Any]] = []
 
     async def start(self) -> None:
         """Start scheduled tasks."""
@@ -614,8 +629,8 @@ class ScheduledTasks:
         jql = f'project = {project_key} AND status != Done AND updated < "{date_str}"'
 
         try:
-            results = await self.engine.client.search_issues(jql)
-            issue_keys = [issue["key"] for issue in results.get("issues", [])]
+            results = await self.engine.client.search_issues_jql(jql)
+            issue_keys = [issue.key for issue in results.issues]
             logger.info("Found stale issues", count=len(issue_keys), project=project_key)
             return issue_keys
         except Exception as e:
@@ -623,30 +638,30 @@ class ScheduledTasks:
             return []
 
     async def check_sprint_capacity(
-        self, board_id: int, sprint_id: int
+        self, _board_id: int, sprint_id: int
     ) -> dict[str, Any]:
         """Check sprint capacity and workload.
 
         Args:
-            board_id: The board ID.
+            _board_id: The board ID (unused, kept for API compatibility).
             sprint_id: The sprint ID.
 
         Returns:
             Capacity metrics.
         """
         try:
-            issues = await self.engine.client.get_sprint_issues(board_id, sprint_id)
-            issue_list = issues.get("issues", [])
+            jql = f"sprint = {sprint_id}"
+            result = await self.engine.client.search_issues_jql(jql, max_results=100)
+            issue_list = result.issues
 
-            total_points = 0
+            total_points = 0.0
             by_status: dict[str, int] = {}
 
             for issue in issue_list:
-                fields = issue.get("fields", {})
-                points = fields.get("customfield_10016", 0) or 0  # Story points field
+                points = issue.story_points or 0
                 total_points += points
 
-                status = fields.get("status", {}).get("name", "Unknown")
+                status = issue.status or "Unknown"
                 by_status[status] = by_status.get(status, 0) + 1
 
             return {

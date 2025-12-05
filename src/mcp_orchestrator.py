@@ -490,7 +490,7 @@ class MCPOrchestrator:
     # PI Handlers
     # ========================================================================
 
-    async def _handle_get_current_pi(self, command: MCPCommand) -> ProgramIncrement:
+    async def _handle_get_current_pi(self, _command: MCPCommand) -> ProgramIncrement:
         """Handle get_current_pi command."""
         assert self._agile is not None
         return self._agile.get_current_pi()
@@ -528,7 +528,7 @@ class MCPOrchestrator:
     # Project Handlers
     # ========================================================================
 
-    async def _handle_list_projects(self, command: MCPCommand) -> list[Project]:
+    async def _handle_list_projects(self, _command: MCPCommand) -> list[Project]:
         """Handle list_projects command."""
         assert self._client is not None
         return await self._client.list_projects()
@@ -631,7 +631,7 @@ class MCPOrchestrator:
     # Utility Handlers
     # ========================================================================
 
-    async def _handle_verify_connection(self, command: MCPCommand) -> dict[str, Any]:
+    async def _handle_verify_connection(self, _command: MCPCommand) -> dict[str, Any]:
         """Handle verify_connection command."""
         assert self._client is not None
         user = await self._client.get_myself()
@@ -641,7 +641,7 @@ class MCPOrchestrator:
             "email": user.get("emailAddress"),
         }
 
-    async def _handle_get_status(self, command: MCPCommand) -> dict[str, Any]:
+    async def _handle_get_status(self, _command: MCPCommand) -> dict[str, Any]:
         """Handle get_status command."""
         assert self._agile is not None
         pi = self._agile.get_current_pi()

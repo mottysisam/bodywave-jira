@@ -1,6 +1,5 @@
 """Tests for automation workflows."""
 
-from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -9,13 +8,33 @@ from src.automation import (
     AutomationEngine,
     BulkOperations,
     IssueAutomation,
-    IssueTransition,
     ScheduledTasks,
     SprintAutomation,
-    WorkflowExecution,
     WorkflowRule,
     WorkflowTrigger,
 )
+
+
+def _create_mock_issue(
+    key: str,
+    status: str = "To Do",
+    labels: list[str] | None = None,
+    story_points: float | None = None,
+) -> MagicMock:
+    """Create a mock Issue object."""
+    issue = MagicMock()
+    issue.key = key
+    issue.status = status
+    issue.labels = labels or []
+    issue.story_points = story_points
+    return issue
+
+
+def _create_mock_search_result(issues: list[MagicMock]) -> MagicMock:
+    """Create a mock SearchResult object."""
+    result = MagicMock()
+    result.issues = issues
+    return result
 
 
 @pytest.fixture
@@ -25,31 +44,20 @@ def mock_client() -> MagicMock:
     client.transition_issue = AsyncMock()
     client.add_comment = AsyncMock()
     client.update_issue = AsyncMock()
-    client.move_issues_to_sprint = AsyncMock()
-    client.get_issue = AsyncMock(return_value={"fields": {"labels": ["existing"]}})
-    client.search_issues = AsyncMock(
-        return_value={"issues": [{"key": "TEST-1"}, {"key": "TEST-2"}]}
-    )
-    client.get_sprint_issues = AsyncMock(
-        return_value={
-            "issues": [
-                {
-                    "key": "TEST-1",
-                    "fields": {
-                        "status": {"name": "To Do"},
-                        "customfield_10016": 5,
-                    },
-                },
-                {
-                    "key": "TEST-2",
-                    "fields": {
-                        "status": {"name": "Done"},
-                        "customfield_10016": 3,
-                    },
-                },
-            ]
-        }
-    )
+    client.add_issues_to_sprint = AsyncMock()
+
+    # get_issue returns an Issue model
+    mock_issue = _create_mock_issue("TEST-1", labels=["existing"])
+    client.get_issue = AsyncMock(return_value=mock_issue)
+
+    # search_issues_jql returns a SearchResult model
+    mock_issues = [
+        _create_mock_issue("TEST-1", status="To Do", story_points=5),
+        _create_mock_issue("TEST-2", status="Done", story_points=3),
+    ]
+    mock_search_result = _create_mock_search_result(mock_issues)
+    client.search_issues_jql = AsyncMock(return_value=mock_search_result)
+
     return client
 
 
@@ -208,7 +216,7 @@ class TestSprintAutomation:
     async def test_setup_rules(self, mock_client: MagicMock) -> None:
         """Should set up default rules."""
         engine = AutomationEngine(mock_client)
-        sprint_auto = SprintAutomation(engine)
+        SprintAutomation(engine)
 
         assert "move_incomplete_to_backlog" in engine.rules
         assert "sprint_start_notification" in engine.rules
@@ -249,7 +257,7 @@ class TestIssueAutomation:
     async def test_setup_rules(self, mock_client: MagicMock) -> None:
         """Should set up default rules."""
         engine = AutomationEngine(mock_client)
-        issue_auto = IssueAutomation(engine)
+        IssueAutomation(engine)
 
         assert "pr_opens_in_review" in engine.rules
         assert "pr_merges_done" in engine.rules
@@ -339,7 +347,7 @@ class TestBulkOperations:
         result = await bulk.bulk_move_to_sprint(["TEST-1", "TEST-2"], sprint_id=5)
 
         assert result is True
-        mock_client.move_issues_to_sprint.assert_called_once_with(
+        mock_client.add_issues_to_sprint.assert_called_once_with(
             5, ["TEST-1", "TEST-2"]
         )
 
@@ -356,7 +364,7 @@ class TestScheduledTasks:
         stale = await scheduler.check_stale_issues("TEST", days_stale=7)
 
         assert stale == ["TEST-1", "TEST-2"]
-        mock_client.search_issues.assert_called_once()
+        mock_client.search_issues_jql.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_check_sprint_capacity(self, mock_client: MagicMock) -> None:
@@ -364,7 +372,7 @@ class TestScheduledTasks:
         engine = AutomationEngine(mock_client)
         scheduler = ScheduledTasks(engine)
 
-        capacity = await scheduler.check_sprint_capacity(board_id=1, sprint_id=5)
+        capacity = await scheduler.check_sprint_capacity(_board_id=1, sprint_id=5)
 
         assert capacity["total_issues"] == 2
         assert capacity["total_points"] == 8

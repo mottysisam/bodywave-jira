@@ -8,9 +8,10 @@ Provides hooks that execute at session boundaries to:
 - Track time spent on issues
 """
 
+import contextlib
 import json
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -246,12 +247,11 @@ class SessionHooks:
         # Get issue details
         try:
             issue = await self.client.get_issue(issue_key)
-            fields = issue.get("fields", {})
             return {
                 "key": issue_key,
-                "summary": fields.get("summary"),
-                "status": fields.get("status", {}).get("name"),
-                "description": fields.get("description"),
+                "summary": issue.summary,
+                "status": issue.status,
+                "description": issue.description,
                 "focused_at": datetime.now().isoformat(),
             }
         except Exception as e:
@@ -295,50 +295,45 @@ class SessionHooks:
             Sprint summary or None.
         """
         try:
-            sprints = await self.client.get_sprints(board_id, state="active")
-            sprint_list = sprints.get("values", [])
-            if not sprint_list:
+            sprints = await self.client.list_sprints(board_id, state="active")
+            if not sprints:
                 return None
 
-            sprint = sprint_list[0]
-            sprint_id = sprint["id"]
+            sprint = sprints[0]
+            sprint_id = sprint.id
 
-            # Get sprint issues
-            issues = await self.client.get_sprint_issues(board_id, sprint_id)
-            issue_list = issues.get("issues", [])
+            # Get sprint issues using JQL
+            jql = f"sprint = {sprint_id}"
+            result = await self.client.search_issues_jql(jql, max_results=100)
+            issue_list = result.issues
 
             total_points = 0
             completed_points = 0
             status_counts = {"done": 0, "in_progress": 0, "todo": 0}
 
             for issue in issue_list:
-                fields = issue.get("fields", {})
-                points = fields.get("customfield_10016", 0) or 0
+                points = int(issue.story_points or 0)
                 total_points += points
 
-                status = fields.get("status", {}).get("statusCategory", {}).get("key", "")
-                if status == "done":
+                status = issue.status.lower() if issue.status else ""
+                if status in ("done", "closed"):
                     status_counts["done"] += 1
                     completed_points += points
-                elif status == "indeterminate":
+                elif status == "in progress":
                     status_counts["in_progress"] += 1
                 else:
                     status_counts["todo"] += 1
 
             # Calculate days remaining
             days_remaining = None
-            end_date_str = sprint.get("endDate")
-            if end_date_str:
-                try:
-                    end_date = datetime.fromisoformat(end_date_str.replace("Z", "+00:00"))
-                    days_remaining = (end_date - datetime.now(end_date.tzinfo)).days
-                except (ValueError, TypeError):
-                    pass
+            if sprint.end_date:
+                with contextlib.suppress(ValueError, TypeError):
+                    days_remaining = (sprint.end_date - date.today()).days
 
             return SprintSummary(
                 sprint_id=sprint_id,
-                sprint_name=sprint["name"],
-                state=sprint.get("state", "unknown"),
+                sprint_name=sprint.name,
+                state=sprint.state.value if sprint.state else "unknown",
                 total_issues=len(issue_list),
                 completed_issues=status_counts["done"],
                 in_progress_issues=status_counts["in_progress"],
@@ -365,21 +360,19 @@ class SessionHooks:
                 f"project = {project_key} AND assignee = currentUser() "
                 f"AND status != Done ORDER BY priority DESC, updated DESC"
             )
-            results = await self.client.search_issues(jql, max_results=20)
-            issue_list = results.get("issues", [])
+            result = await self.client.search_issues_jql(jql, max_results=20)
 
             work_items = []
-            for issue in issue_list:
-                fields = issue.get("fields", {})
+            for issue in result.issues:
                 work_items.append(
                     WorkItem(
-                        key=issue["key"],
-                        summary=fields.get("summary", ""),
-                        status=fields.get("status", {}).get("name", "Unknown"),
-                        priority=fields.get("priority", {}).get("name", "Medium"),
-                        assignee=fields.get("assignee", {}).get("displayName"),
-                        story_points=fields.get("customfield_10016"),
-                        labels=fields.get("labels", []),
+                        key=issue.key,
+                        summary=issue.summary,
+                        status=issue.status,
+                        priority=issue.priority or "Medium",
+                        assignee=issue.assignee.display_name if issue.assignee else None,
+                        story_points=int(issue.story_points) if issue.story_points else None,
+                        labels=issue.labels,
                     )
                 )
 

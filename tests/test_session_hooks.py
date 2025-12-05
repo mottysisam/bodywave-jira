@@ -1,13 +1,13 @@
 """Tests for session hooks."""
 
-import json
 import tempfile
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from src.models import SprintState
 from src.session_hooks import (
     SessionContext,
     SessionHooks,
@@ -18,69 +18,107 @@ from src.session_hooks import (
 )
 
 
+def _create_mock_issue(
+    key: str,
+    summary: str = "Test issue",
+    status: str = "To Do",
+    description: str | None = None,
+    priority: str | None = "Medium",
+    assignee_name: str | None = None,
+    story_points: float | None = None,
+    labels: list[str] | None = None,
+) -> MagicMock:
+    """Create a mock Issue object."""
+    issue = MagicMock()
+    issue.key = key
+    issue.summary = summary
+    issue.status = status
+    issue.description = description
+    issue.priority = priority
+    issue.labels = labels or []
+    issue.story_points = story_points
+    if assignee_name:
+        issue.assignee = MagicMock()
+        issue.assignee.display_name = assignee_name
+    else:
+        issue.assignee = None
+    return issue
+
+
+def _create_mock_sprint(
+    sprint_id: int,
+    name: str,
+    state: str = "active",
+    end_date: date | None = None,
+) -> MagicMock:
+    """Create a mock Sprint object."""
+    sprint = MagicMock()
+    sprint.id = sprint_id
+    sprint.name = name
+    sprint.state = SprintState(state)
+    sprint.end_date = end_date
+    return sprint
+
+
+def _create_mock_search_result(issues: list[MagicMock]) -> MagicMock:
+    """Create a mock SearchResult object."""
+    result = MagicMock()
+    result.issues = issues
+    return result
+
+
 @pytest.fixture
 def mock_client() -> MagicMock:
     """Create a mock Jira client."""
     client = MagicMock()
-    client.get_issue = AsyncMock(
-        return_value={
-            "key": "TEST-1",
-            "fields": {
-                "summary": "Test issue",
-                "status": {"name": "In Progress"},
-                "description": "Test description",
-            },
-        }
+
+    # get_issue returns an Issue model
+    mock_issue = _create_mock_issue(
+        key="TEST-1",
+        summary="Test issue",
+        status="In Progress",
+        description="Test description",
     )
-    client.get_sprints = AsyncMock(
-        return_value={
-            "values": [
-                {
-                    "id": 1,
-                    "name": "Sprint 1",
-                    "state": "active",
-                    "endDate": "2025-01-15T00:00:00Z",
-                }
-            ]
-        }
+    client.get_issue = AsyncMock(return_value=mock_issue)
+
+    # list_sprints returns Sprint models
+    mock_sprint = _create_mock_sprint(
+        sprint_id=1,
+        name="Sprint 1",
+        state="active",
+        end_date=date(2025, 1, 15),
     )
-    client.get_sprint_issues = AsyncMock(
-        return_value={
-            "issues": [
-                {
-                    "key": "TEST-1",
-                    "fields": {
-                        "status": {"statusCategory": {"key": "done"}},
-                        "customfield_10016": 5,
-                    },
-                },
-                {
-                    "key": "TEST-2",
-                    "fields": {
-                        "status": {"statusCategory": {"key": "indeterminate"}},
-                        "customfield_10016": 3,
-                    },
-                },
-            ]
-        }
-    )
-    client.search_issues = AsyncMock(
-        return_value={
-            "issues": [
-                {
-                    "key": "TEST-1",
-                    "fields": {
-                        "summary": "My task",
-                        "status": {"name": "To Do"},
-                        "priority": {"name": "High"},
-                        "assignee": {"displayName": "Test User"},
-                        "customfield_10016": 3,
-                        "labels": ["backend"],
-                    },
-                }
-            ]
-        }
-    )
+    client.list_sprints = AsyncMock(return_value=[mock_sprint])
+
+    # search_issues_jql returns SearchResult model
+    mock_issues_for_sprint = [
+        _create_mock_issue("TEST-1", status="done", story_points=5),
+        _create_mock_issue("TEST-2", status="in progress", story_points=3),
+    ]
+    mock_search_result = _create_mock_search_result(mock_issues_for_sprint)
+
+    # For work items search
+    mock_work_items = [
+        _create_mock_issue(
+            key="TEST-1",
+            summary="My task",
+            status="To Do",
+            priority="High",
+            assignee_name="Test User",
+            story_points=3,
+            labels=["backend"],
+        )
+    ]
+    mock_work_result = _create_mock_search_result(mock_work_items)
+
+    # Return different results based on JQL
+    async def search_issues_jql_side_effect(jql: str, **_kwargs: int) -> MagicMock:
+        if "assignee = currentUser()" in jql:
+            return mock_work_result
+        return mock_search_result
+
+    client.search_issues_jql = AsyncMock(side_effect=search_issues_jql_side_effect)
+
     client.add_comment = AsyncMock()
     return client
 
