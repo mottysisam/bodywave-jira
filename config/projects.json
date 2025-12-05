@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Bodywave Jira Projects Configuration",
+  "version": "1.0.0",
+  "organization": {
+    "name": "Bodywave",
+    "jira_domain": "bodywave.atlassian.net"
+  },
+  "agile": {
+    "pi_duration_months": 3,
+    "pis_per_year": 4,
+    "pi_naming_pattern": "PI-{year}-Q{quarter}",
+    "sprint_naming_pattern": "{project}-Sprint-{pi}-{number}",
+    "default_sprint_duration_weeks": 2,
+    "default_sprints_per_pi": 6
+  },
+  "projects": [
+    {
+      "key": "BCM",
+      "name": "BCM Cloud",
+      "description": "Healthcare SaaS platform for BrainSway device management",
+      "board_id": null,
+      "sprint_duration_weeks": 2,
+      "sprints_per_pi": 6,
+      "default_issue_type": "Task",
+      "workflow": {
+        "states": ["To Do", "In Progress", "In Review", "Done"],
+        "done_states": ["Done"]
+      },
+      "labels": {
+        "pi_prefix": "PI-",
+        "feature_prefix": "feature-",
+        "bug_prefix": "bug-"
+      }
+    },
+    {
+      "key": "INFRA",
+      "name": "Brainsway Infrastructure",
+      "description": "AWS Infrastructure and DevOps automation",
+      "board_id": null,
+      "sprint_duration_weeks": 2,
+      "sprints_per_pi": 6,
+      "default_issue_type": "Task",
+      "workflow": {
+        "states": ["To Do", "In Progress", "In Review", "Done"],
+        "done_states": ["Done"]
+      },
+      "labels": {
+        "pi_prefix": "PI-",
+        "feature_prefix": "feature-",
+        "bug_prefix": "bug-"
+      }
+    }
+  ],
+  "issue_types": {
+    "epic": "Epic",
+    "story": "Story",
+    "task": "Task",
+    "subtask": "Sub-task",
+    "bug": "Bug"
+  },
+  "priorities": {
+    "highest": "Highest",
+    "high": "High",
+    "medium": "Medium",
+    "low": "Low",
+    "lowest": "Lowest"
+  }
+}
