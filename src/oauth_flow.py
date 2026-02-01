@@ -151,7 +151,9 @@ async def get_accessible_resources(access_token: str) -> list[dict[str, Any]]:
         return result
 
 
-def save_tokens(tokens: dict[str, Any], cloud_id: str, site_name: str, site_url: str, set_default: bool = False) -> None:
+def save_tokens(
+    tokens: dict[str, Any], cloud_id: str, site_name: str, site_url: str, set_default: bool = False
+) -> None:
     """Save tokens to accounts manager."""
     from src.accounts import account_manager
 
@@ -310,12 +312,13 @@ def run_oauth_flow() -> None:
 
         # Use first resource (or let user choose if multiple)
         selected = resources[0]
-        site_name = selected['name']
-        site_url = selected['url']
+        site_name = selected["name"]
+        site_url = selected["url"]
         print(f"\n✅ Using: {site_name}")
 
         # Check if this is the first account (to set as default)
         from src.accounts import account_manager
+
         is_first = len(account_manager.list_accounts()) == 0
 
         # Save tokens with site info

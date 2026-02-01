@@ -92,9 +92,7 @@ class AutomationEngine:
         self.rules[rule.name] = rule
         logger.info("Registered automation rule", name=rule.name, trigger=rule.trigger.value)
 
-    def register_handler(
-        self, trigger: WorkflowTrigger, handler: Callable[..., Any]
-    ) -> None:
+    def register_handler(self, trigger: WorkflowTrigger, handler: Callable[..., Any]) -> None:
         """Register a handler function for a trigger.
 
         Args:
@@ -139,9 +137,7 @@ class AutomationEngine:
 
         return executions
 
-    def _check_conditions(
-        self, conditions: dict[str, Any], context: dict[str, Any]
-    ) -> bool:
+    def _check_conditions(self, conditions: dict[str, Any], context: dict[str, Any]) -> bool:
         """Check if conditions are met.
 
         Args:
@@ -157,9 +153,7 @@ class AutomationEngine:
                 return False
         return True
 
-    async def _execute_rule(
-        self, rule: WorkflowRule, context: dict[str, Any]
-    ) -> WorkflowExecution:
+    async def _execute_rule(self, rule: WorkflowRule, context: dict[str, Any]) -> WorkflowExecution:
         """Execute a single workflow rule.
 
         Args:
@@ -485,9 +479,7 @@ class BulkOperations:
         """
         self.client = client
 
-    async def bulk_transition(
-        self, issue_keys: list[str], to_status: str
-    ) -> dict[str, bool]:
+    async def bulk_transition(self, issue_keys: list[str], to_status: str) -> dict[str, bool]:
         """Transition multiple issues.
 
         Args:
@@ -510,9 +502,7 @@ class BulkOperations:
 
         return results
 
-    async def bulk_assign(
-        self, issue_keys: list[str], assignee: str
-    ) -> dict[str, bool]:
+    async def bulk_assign(self, issue_keys: list[str], assignee: str) -> dict[str, bool]:
         """Assign multiple issues to a user.
 
         Args:
@@ -535,9 +525,7 @@ class BulkOperations:
 
         return results
 
-    async def bulk_add_labels(
-        self, issue_keys: list[str], labels: list[str]
-    ) -> dict[str, bool]:
+    async def bulk_add_labels(self, issue_keys: list[str], labels: list[str]) -> dict[str, bool]:
         """Add labels to multiple issues.
 
         Args:
@@ -565,9 +553,7 @@ class BulkOperations:
 
         return results
 
-    async def bulk_move_to_sprint(
-        self, issue_keys: list[str], sprint_id: int
-    ) -> bool:
+    async def bulk_move_to_sprint(self, issue_keys: list[str], sprint_id: int) -> bool:
         """Move multiple issues to a sprint.
 
         Args:
@@ -611,9 +597,7 @@ class ScheduledTasks:
             task.cancel()
         logger.info("Stopped scheduled tasks")
 
-    async def check_stale_issues(
-        self, project_key: str, days_stale: int = 7
-    ) -> list[str]:
+    async def check_stale_issues(self, project_key: str, days_stale: int = 7) -> list[str]:
         """Find issues that haven't been updated recently.
 
         Args:
@@ -637,9 +621,7 @@ class ScheduledTasks:
             logger.error("Failed to find stale issues", error=str(e))
             return []
 
-    async def check_sprint_capacity(
-        self, _board_id: int, sprint_id: int
-    ) -> dict[str, Any]:
+    async def check_sprint_capacity(self, _board_id: int, sprint_id: int) -> dict[str, Any]:
         """Check sprint capacity and workload.
 
         Args:

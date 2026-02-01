@@ -283,9 +283,7 @@ class SessionHooks:
             "worked_issues": self.current_session.worked_issues,
         }
 
-    async def _get_active_sprint_summary(
-        self, board_id: int
-    ) -> SprintSummary | None:
+    async def _get_active_sprint_summary(self, board_id: int) -> SprintSummary | None:
         """Get summary of the active sprint.
 
         Args:
@@ -465,12 +463,8 @@ def generate_session_greeting(context: dict[str, Any]) -> str:
         lines.append(f"## Active Sprint: {sprint['name']}")
         lines.append("")
         lines.append(f"- **Status**: {sprint['state']}")
-        lines.append(
-            f"- **Issues**: {progress['completed']}/{progress['total']} completed"
-        )
-        lines.append(
-            f"- **Points**: {points['completed']}/{points['total']} completed"
-        )
+        lines.append(f"- **Issues**: {progress['completed']}/{progress['total']} completed")
+        lines.append(f"- **Points**: {points['completed']}/{points['total']} completed")
         if sprint.get("days_remaining") is not None:
             lines.append(f"- **Days Remaining**: {sprint['days_remaining']}")
         lines.append("")
@@ -480,8 +474,10 @@ def generate_session_greeting(context: dict[str, Any]) -> str:
         lines.append("")
         for item in context["work_items"][:5]:  # Top 5
             status_emoji = (
-                "🔴" if item["status"] == "To Do"
-                else "🟡" if item["status"] == "In Progress"
+                "🔴"
+                if item["status"] == "To Do"
+                else "🟡"
+                if item["status"] == "In Progress"
                 else "🟢"
             )
             lines.append(f"- {status_emoji} **{item['key']}**: {item['summary']}")

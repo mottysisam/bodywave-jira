@@ -400,17 +400,18 @@ def create_auth_provider(
             return auth
         else:
             raise ConfigurationError(
-                "OAuth 2.0 credentials found but not authorized yet.\n"
-                "Run: python -m src.oauth_flow"
+                "OAuth 2.0 credentials found but not authorized yet.\nRun: python -m src.oauth_flow"
             )
 
     # Priority 2: API Token (legacy - deprecated Jan 2026)
     if email and token:
         import warnings
+
         warnings.warn(
             "API Token authentication is deprecated as of January 2026. "
             "Please migrate to OAuth 2.0.",
-            DeprecationWarning, stacklevel=2,
+            DeprecationWarning,
+            stacklevel=2,
         )
         return APITokenAuth(email=email, token=token)
 

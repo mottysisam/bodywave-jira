@@ -91,9 +91,7 @@ class AccountManager:
 
     def _save(self) -> None:
         """Save accounts to file."""
-        data = {
-            "accounts": {name: acc.to_dict() for name, acc in self._accounts.items()}
-        }
+        data = {"accounts": {name: acc.to_dict() for name, acc in self._accounts.items()}}
         ACCOUNTS_FILE.write_text(json.dumps(data, indent=2))
 
     def add_account(
@@ -166,7 +164,7 @@ class AccountManager:
             return False
 
         for acc_name, acc in self._accounts.items():
-            acc.is_default = (acc_name == name)
+            acc.is_default = acc_name == name
 
         self._save()
         return True

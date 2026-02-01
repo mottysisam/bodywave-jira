@@ -248,9 +248,7 @@ class TestSessionHooks:
         """Should load work items for project."""
         hooks = SessionHooks(mock_client, state_file=temp_state_file)
 
-        result = await hooks.on_session_start(
-            session_id="test-123", project_key="TEST"
-        )
+        result = await hooks.on_session_start(session_id="test-123", project_key="TEST")
 
         assert "work_items" in result
         assert len(result["work_items"]) == 1
@@ -263,18 +261,14 @@ class TestSessionHooks:
         """Should load sprint info for board."""
         hooks = SessionHooks(mock_client, state_file=temp_state_file)
 
-        result = await hooks.on_session_start(
-            session_id="test-123", board_id=1
-        )
+        result = await hooks.on_session_start(session_id="test-123", board_id=1)
 
         assert "sprint" in result
         assert result["sprint"]["name"] == "Sprint 1"
         assert result["sprint"]["state"] == "active"
 
     @pytest.mark.asyncio
-    async def test_on_session_end(
-        self, mock_client: MagicMock, temp_state_file: Path
-    ) -> None:
+    async def test_on_session_end(self, mock_client: MagicMock, temp_state_file: Path) -> None:
         """Should end session and return summary."""
         hooks = SessionHooks(mock_client, state_file=temp_state_file)
 
@@ -304,9 +298,7 @@ class TestSessionHooks:
         assert "error" in result
 
     @pytest.mark.asyncio
-    async def test_on_issue_focus(
-        self, mock_client: MagicMock, temp_state_file: Path
-    ) -> None:
+    async def test_on_issue_focus(self, mock_client: MagicMock, temp_state_file: Path) -> None:
         """Should track issue focus."""
         hooks = SessionHooks(mock_client, state_file=temp_state_file)
         await hooks.on_session_start(session_id="test-123")
@@ -342,9 +334,7 @@ class TestSessionHooks:
     ) -> None:
         """Should return active session context."""
         hooks = SessionHooks(mock_client, state_file=temp_state_file)
-        await hooks.on_session_start(
-            session_id="test-123", project_key="TEST"
-        )
+        await hooks.on_session_start(session_id="test-123", project_key="TEST")
 
         result = await hooks.get_session_context()
 
@@ -364,14 +354,10 @@ class TestSessionHooks:
         assert result["active"] is False
 
     @pytest.mark.asyncio
-    async def test_state_persistence(
-        self, mock_client: MagicMock, temp_state_file: Path
-    ) -> None:
+    async def test_state_persistence(self, mock_client: MagicMock, temp_state_file: Path) -> None:
         """Should persist and restore session state."""
         hooks1 = SessionHooks(mock_client, state_file=temp_state_file)
-        await hooks1.on_session_start(
-            session_id="test-123", project_key="TEST"
-        )
+        await hooks1.on_session_start(session_id="test-123", project_key="TEST")
 
         # Verify state file exists
         assert temp_state_file.exists()

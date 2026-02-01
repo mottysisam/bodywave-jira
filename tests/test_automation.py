@@ -146,9 +146,7 @@ class TestAutomationEngine:
         engine.register_rule(rule)
 
         # Should not match
-        results = await engine.execute_trigger(
-            WorkflowTrigger.ISSUE_CREATED, {"project": "OTHER"}
-        )
+        results = await engine.execute_trigger(WorkflowTrigger.ISSUE_CREATED, {"project": "OTHER"})
         assert len(results) == 0
 
         # Should match
@@ -184,9 +182,7 @@ class TestAutomationEngine:
         )
         engine.register_rule(rule)
 
-        await engine.execute_trigger(
-            WorkflowTrigger.PR_OPENED, {"issue_key": "TEST-1"}
-        )
+        await engine.execute_trigger(WorkflowTrigger.PR_OPENED, {"issue_key": "TEST-1"})
         mock_client.transition_issue.assert_called_once_with("TEST-1", "In Review")
 
     @pytest.mark.asyncio
@@ -299,9 +295,7 @@ class TestBulkOperations:
         """Should transition multiple issues."""
         bulk = BulkOperations(mock_client)
 
-        results = await bulk.bulk_transition(
-            ["TEST-1", "TEST-2"], "In Progress"
-        )
+        results = await bulk.bulk_transition(["TEST-1", "TEST-2"], "In Progress")
 
         assert results["TEST-1"] is True
         assert results["TEST-2"] is True
@@ -347,9 +341,7 @@ class TestBulkOperations:
         result = await bulk.bulk_move_to_sprint(["TEST-1", "TEST-2"], sprint_id=5)
 
         assert result is True
-        mock_client.add_issues_to_sprint.assert_called_once_with(
-            5, ["TEST-1", "TEST-2"]
-        )
+        mock_client.add_issues_to_sprint.assert_called_once_with(5, ["TEST-1", "TEST-2"])
 
 
 class TestScheduledTasks:

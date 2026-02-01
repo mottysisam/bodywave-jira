@@ -336,9 +336,7 @@ class AgileManager:
         created_sprints = []
 
         for sprint_num in range(1, num_sprints + 1):
-            start_date, end_date = self.calculate_sprint_dates(
-                pi, sprint_num, project_config
-            )
+            start_date, end_date = self.calculate_sprint_dates(pi, sprint_num, project_config)
             name = self.generate_sprint_name(pi, sprint_num, project_config)
 
             sprint = await self._client.create_sprint(
@@ -527,9 +525,7 @@ class AgileManager:
         Returns:
             Started Sprint or None if no future sprints.
         """
-        future_sprints = await self.get_project_sprints(
-            project_key, state=SprintState.FUTURE
-        )
+        future_sprints = await self.get_project_sprints(project_key, state=SprintState.FUTURE)
 
         if not future_sprints:
             logger.warning("No future sprints to start", project=project_key)

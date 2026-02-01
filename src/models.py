@@ -168,9 +168,13 @@ class Project(BaseModel):
 class ProjectCreate(BaseModel):
     """Schema for creating a new project."""
 
-    key: str = Field(..., min_length=2, max_length=10, description="Project key (uppercase, 2-10 chars)")
+    key: str = Field(
+        ..., min_length=2, max_length=10, description="Project key (uppercase, 2-10 chars)"
+    )
     name: str = Field(..., min_length=1, max_length=255, description="Project name")
-    project_type: str = Field(default="software", description="Project type: software, business, service_desk")
+    project_type: str = Field(
+        default="software", description="Project type: software, business, service_desk"
+    )
     description: str | None = Field(None, description="Project description")
     lead_account_id: str | None = Field(None, description="Project lead account ID")
     template_key: str | None = Field(None, description="Project template key")

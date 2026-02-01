@@ -1,6 +1,5 @@
 """Tests for GitHub-Jira integration utilities."""
 
-
 from src.github_integration import (
     GitHubContext,
     JiraLink,

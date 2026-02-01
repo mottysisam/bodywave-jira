@@ -138,9 +138,7 @@ class ProjectsConfig:
         self.version: str = data.get("version", "1.0.0")
         self.organization: dict[str, str] = data.get("organization", {})
         self.agile: AgileConfig = AgileConfig(data.get("agile", {}))
-        self.projects: list[ProjectConfig] = [
-            ProjectConfig(p) for p in data.get("projects", [])
-        ]
+        self.projects: list[ProjectConfig] = [ProjectConfig(p) for p in data.get("projects", [])]
         self.issue_types: dict[str, str] = data.get("issue_types", {})
         self.priorities: dict[str, str] = data.get("priorities", {})
 

@@ -406,9 +406,7 @@ class JiraClient:
             ValidationError: If transition is not available.
         """
         # Get available transitions
-        transitions_data = await self._request(
-            "GET", f"/issue/{issue_key}/transitions"
-        )
+        transitions_data = await self._request("GET", f"/issue/{issue_key}/transitions")
         transitions = transitions_data.get("transitions", [])
 
         # Find matching transition
@@ -421,8 +419,7 @@ class JiraClient:
         if not transition_id:
             available = [t["name"] for t in transitions]
             raise ValidationError(
-                f"Transition '{transition_name}' not available. "
-                f"Available: {available}"
+                f"Transition '{transition_name}' not available. Available: {available}"
             )
 
         # Execute transition

@@ -290,9 +290,7 @@ class MCPOrchestrator:
                     error=f"Invalid command '{command_str}'. Valid: {valid}",
                 )
 
-            project_key = raw_command.pop("project", None) or raw_command.pop(
-                "project_key", None
-            )
+            project_key = raw_command.pop("project", None) or raw_command.pop("project_key", None)
 
             command = MCPCommand(
                 type=command_type,
@@ -536,9 +534,7 @@ class MCPOrchestrator:
     async def _handle_get_project(self, command: MCPCommand) -> Project:
         """Handle get_project command."""
         assert self._client is not None
-        project_key = command.params.get("project_key") or self._get_project_key(
-            command
-        )
+        project_key = command.params.get("project_key") or self._get_project_key(command)
         return await self._client.get_project(project_key)
 
     async def _handle_create_project(self, command: MCPCommand) -> Project:
@@ -612,9 +608,7 @@ class MCPOrchestrator:
             by_status[status].append(issue.key)
 
         total_points = sum(i.story_points or 0 for i in issues)
-        done_points = sum(
-            i.story_points or 0 for i in issues if i.status in ("Done", "Closed")
-        )
+        done_points = sum(i.story_points or 0 for i in issues if i.status in ("Done", "Closed"))
 
         return {
             "sprint": sprint.name,
@@ -664,9 +658,7 @@ def main() -> None:
     async def run() -> None:
         async with MCPOrchestrator() as orchestrator:
             # Example: Print status
-            response = await orchestrator.execute(
-                MCPCommand(type=CommandType.GET_STATUS)
-            )
+            response = await orchestrator.execute(MCPCommand(type=CommandType.GET_STATUS))
             print(response.to_json())
 
     asyncio.run(run())
