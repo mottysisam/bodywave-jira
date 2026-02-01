@@ -3,8 +3,8 @@
   "description": "Bodywave Jira Projects Configuration",
   "version": "1.0.0",
   "organization": {
-    "name": "Bodywave",
-    "jira_domain": "bodywave.atlassian.net"
+    "name": "Example Corp",
+    "jira_domain": "your-domain.atlassian.net"
   },
   "agile": {
     "pi_duration_months": 3,
@@ -16,9 +16,9 @@
   },
   "projects": [
     {
-      "key": "BCM",
-      "name": "BCM Cloud",
-      "description": "Healthcare SaaS platform for BrainSway device management",
+      "key": "PROJ1",
+      "name": "Project One",
+      "description": "Example project - replace with your project details",
       "board_id": null,
       "sprint_duration_weeks": 2,
       "sprints_per_pi": 6,
@@ -34,9 +34,9 @@
       }
     },
     {
-      "key": "INFRA",
-      "name": "Brainsway Infrastructure",
-      "description": "AWS Infrastructure and DevOps automation",
+      "key": "PROJ2",
+      "name": "Project Two",
+      "description": "Example project - replace with your project details",
       "board_id": null,
       "sprint_duration_weeks": 2,
       "sprints_per_pi": 6,

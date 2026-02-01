@@ -34,9 +34,9 @@ Add to your `~/.claude.json` or project `.mcp.json`:
 
 | Variable | Description | Example |
 |----------|-------------|---------|
-| `JIRA_URL` | Your Jira instance URL | `https://bodywave.atlassian.net` |
+| `JIRA_URL` | Your Jira instance URL | `https://your-domain.atlassian.net` |
 | `JIRA_EMAIL` | Your Atlassian account email | `you@example.com` |
-| `JIRA_API_KEY` | Jira API token ([Generate here](https://id.atlassian.com/manage-profile/security/api-tokens)) | `ATATT3xFfGF0...` |
+| `JIRA_API_KEY` | Jira API token ([Generate here](https://id.atlassian.com/manage-profile/security/api-tokens)) | `your-api-token` |
 
 ## Available Tools
 
@@ -124,4 +124,4 @@ MIT
 
 ## Author
 
-Bodywave <engineering@bodywave.com>
+Bodywave

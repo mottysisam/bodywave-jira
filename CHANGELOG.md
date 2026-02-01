@@ -122,4 +122,4 @@ This release completes all 12 issues in the initial sprint:
 
 ---
 
-[0.1.0]: https://github.com/mottysisam/bodywave-jira/releases/tag/v0.1.0
+[0.1.0]: https://github.com/bodywave/jira-mcp/releases/tag/v0.1.0

@@ -1,11 +1,12 @@
-#!/Users/motty/code/bodywave/jira/.venv/bin/python
+#!/usr/bin/env python3
 """Check and report on Scrum boards for all projects."""
 
 import asyncio
 import sys
 from datetime import datetime, timedelta
+from pathlib import Path
 
-sys.path.insert(0, "/Users/motty/code/bodywave/jira")
+sys.path.insert(0, str(Path(__file__).parent))
 
 from src.accounts import AccountManager
 from src.jira_client import JiraClient
@@ -17,7 +18,7 @@ from src.scrum_calculator import get_scrum_context, get_sprint_prefix
 async def create_jira_client():
     """Create Jira client with OAuth authentication."""
     manager = AccountManager()
-    account = manager.get_account("bodywave")
+    account = manager.get_account("default")
     if not account:
         print("Error: bodywave account not found")
         return None
@@ -55,7 +56,7 @@ async def create_jira_client():
 async def main():
     """Check boards and sprints for all projects."""
     # Project mapping
-    projects = ["MGMT", "CMM", "BNN"]
+    projects = ["PROJ1", "PROJ2"]
 
     print("=" * 60)
     print("SCRUM BOARDS CHECK")

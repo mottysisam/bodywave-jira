@@ -4,7 +4,7 @@
 
 // Environment configuration (read from env vars)
 export interface JiraConfig {
-  url: string;        // JIRA_URL - e.g., https://bodywave.atlassian.net
+  url: string;        // JIRA_URL - e.g., https://your-domain.atlassian.net
   email: string;      // JIRA_EMAIL - user email for auth
   apiKey: string;     // JIRA_API_KEY - API token
 }

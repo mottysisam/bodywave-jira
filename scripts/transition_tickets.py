@@ -20,7 +20,7 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
-JIRA_BASE_URL = os.getenv("JIRA_BASE_URL", "https://bodywave.atlassian.net")
+JIRA_BASE_URL = os.getenv("JIRA_BASE_URL", "https://your-domain.atlassian.net")
 JIRA_USER_EMAIL = os.getenv("JIRA_USER_EMAIL")
 JIRA_API_TOKEN = os.getenv("JIRA_API_TOKEN")
 

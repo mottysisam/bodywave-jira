@@ -4,9 +4,9 @@ version = "0.1.0"
 description = "MCP server for AI agents to manage Jira Cloud spaces"
 readme = "README.md"
 requires-python = ">=3.13"
-license = {text = "Proprietary"}
+license = {text = "MIT"}
 authors = [
-    {name = "Bodywave", email = "engineering@bodywave.com"}
+    {name = "Bodywave"}
 ]
 keywords = ["jira", "mcp", "ai", "automation", "scrum", "agile"]
 classifiers = [

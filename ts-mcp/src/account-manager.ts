@@ -11,7 +11,7 @@ import { JiraConfig } from "./types.js";
 import { JiraClient, JiraClientError } from "./jira-client.js";
 
 export interface JiraAccount {
-  id: string;           // Unique identifier (e.g., "bodywave", "brainsway")
+  id: string;           // Unique identifier (e.g., "mycompany", "secondary")
   name: string;         // Display name
   url: string;          // Jira instance URL
   email: string;        // User email
@@ -44,7 +44,7 @@ export class AccountManager {
     const apiKey = process.env.JIRA_API_KEY;
 
     if (url && email && apiKey) {
-      // Extract domain name for ID (e.g., "bodywave" from "https://bodywave.atlassian.net")
+      // Extract domain name for ID (e.g., "mycompany" from "https://mycompany.atlassian.net")
       const urlMatch = url.match(/https?:\/\/([^.]+)\./);
       const id = urlMatch ? urlMatch[1] : "default";
 

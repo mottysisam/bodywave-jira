@@ -23,7 +23,7 @@ A Python 3.13+ Master Control Program (MCP) server that enables AI agents to man
 
 ```bash
 # Clone the repository
-cd /Users/motty/code/bodywave/jira
+cd bodywave-jira
 
 # Install dependencies with uv
 uv pip install -e .
@@ -41,8 +41,8 @@ cp .env.example .env
 
 2. Edit `.env` with your credentials:
 ```bash
-JIRA_BASE_URL=https://bodywave.atlassian.net
-JIRA_USER_EMAIL=your-email@bodywave.com
+JIRA_BASE_URL=https://your-domain.atlassian.net
+JIRA_USER_EMAIL=your-email@example.com
 JIRA_API_TOKEN=your-api-token
 ```
 
@@ -308,7 +308,7 @@ Each project can have independent sprint cycles within the PI constraints:
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `JIRA_BASE_URL` | Yes | Jira Cloud URL (e.g., `https://bodywave.atlassian.net`) |
+| `JIRA_BASE_URL` | Yes | Jira Cloud URL (e.g., `https://your-domain.atlassian.net`) |
 | `JIRA_USER_EMAIL` | Yes | Email for authentication |
 | `JIRA_API_TOKEN` | Yes | API token from Atlassian account |
 | `LOG_LEVEL` | No | Logging level (default: INFO) |
@@ -358,4 +358,4 @@ See [CLAUDE.md](CLAUDE.md) for engineering guidelines and code standards.
 
 ## License
 
-Proprietary - Bodywave Ltd.
+MIT

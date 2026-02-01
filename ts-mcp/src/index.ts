@@ -8,7 +8,7 @@
  *   claude mcp add bodywave-jira --scope user -- env JIRA_URL=https://your-domain.atlassian.net JIRA_EMAIL=your@email.com JIRA_API_KEY=your-api-key npx -y @bodywave/jira-mcp
  *
  * Environment variables:
- *   - JIRA_URL: Jira instance URL (e.g., https://bodywave.atlassian.net)
+ *   - JIRA_URL: Jira instance URL (e.g., https://your-domain.atlassian.net)
  *   - JIRA_EMAIL: User email for authentication
  *   - JIRA_API_KEY: API token for authentication
  */
@@ -1867,7 +1867,7 @@ This tool fetches an EPIC and all its child tasks, then generates:
       properties: {
         id: {
           type: "string",
-          description: "Unique identifier for the account (lowercase, e.g., 'bodywave', 'brainsway')",
+          description: "Unique identifier for the account (lowercase, e.g., 'mycompany', 'secondary')",
         },
         name: {
           type: "string",
@@ -1875,7 +1875,7 @@ This tool fetches an EPIC and all its child tasks, then generates:
         },
         url: {
           type: "string",
-          description: "Jira instance URL (e.g., https://bodywave.atlassian.net)",
+          description: "Jira instance URL (e.g., https://your-domain.atlassian.net)",
         },
         email: {
           type: "string",
@@ -2074,7 +2074,7 @@ async function generateEpicWorkflow(
   const doneCount = tasks.filter((t) => t.status === "Done").length;
 
   // Get Jira base URL from config
-  const jiraUrl = process.env.JIRA_URL || "https://bodywave.atlassian.net";
+  const jiraUrl = process.env.JIRA_URL || "https://your-domain.atlassian.net";
   const epicUrl = `${jiraUrl}/browse/${epicKey}`;
 
   const prBody = `## Summary

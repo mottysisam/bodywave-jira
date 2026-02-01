@@ -18,7 +18,7 @@ class JiraAccount:
 
     name: str  # Display name (e.g., "bodywave", "brainsway")
     cloud_id: str
-    site_url: str  # e.g., "https://bodywave.atlassian.net"
+    site_url: str  # e.g., "https://your-domain.atlassian.net"
     access_token: str
     refresh_token: str | None
     token_type: str = "Bearer"

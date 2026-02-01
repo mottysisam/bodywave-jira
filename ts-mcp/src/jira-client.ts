@@ -2,7 +2,7 @@
  * Jira REST API Client
  *
  * Reads configuration from environment variables:
- * - JIRA_URL: Jira instance URL (e.g., https://bodywave.atlassian.net)
+ * - JIRA_URL: Jira instance URL (e.g., https://your-domain.atlassian.net)
  * - JIRA_EMAIL: User email for authentication
  * - JIRA_API_KEY: API token for authentication
  */

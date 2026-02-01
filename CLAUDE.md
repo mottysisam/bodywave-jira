@@ -32,14 +32,14 @@
                       │ HTTPS
 ┌─────────────────────▼───────────────────────────────────────┐
 │              Jira Cloud REST API                            │
-│         bodywave.atlassian.net                              │
+│         your-domain.atlassian.net                           │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 ## Jira Environment
 
 - **Platform**: Jira Cloud (Private spaces)
-- **Domain**: `bodywave.atlassian.net`
+- **Domain**: `your-domain.atlassian.net`
 - **Methodology**: Scrum
 - **Authentication**: API Token (with OAuth 2.0 migration path)
 
@@ -101,8 +101,8 @@ bodywave-jira/
 
 ### Required Environment Variables
 ```bash
-JIRA_BASE_URL=https://bodywave.atlassian.net
-JIRA_USER_EMAIL=your-email@bodywave.com
+JIRA_BASE_URL=https://your-domain.atlassian.net
+JIRA_USER_EMAIL=your-email@example.com
 JIRA_API_TOKEN=your-api-token
 ```
 
@@ -216,5 +216,5 @@ project = BCM AND updated >= startOfWeek()
 
 ## Contact
 
-- **Workspace**: bodywave.atlassian.net
-- **Maintainer**: Motty (motty@bodywave.com)
+- **Workspace**: your-domain.atlassian.net
+- **Maintainer**: Bodywave

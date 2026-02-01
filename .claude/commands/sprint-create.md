@@ -16,7 +16,7 @@ Since automated sprint creation is not available, guide the user to create sprin
 
 1. **Inform the user** about the MCP limitation
 2. **Provide direct link** to create sprint in Jira:
-   - Bodywave: https://bodywave.atlassian.net/jira/software/projects/{PROJECT_KEY}/boards/{BOARD_ID}/backlog
+   - Bodywave: https://your-domain.atlassian.net/jira/software/projects/{PROJECT_KEY}/boards/{BOARD_ID}/backlog
    - Click "Create Sprint" button in the backlog view
 
 3. **Suggest sprint naming convention**:
@@ -38,7 +38,7 @@ The MCP server does not currently support automated sprint creation.
 ### Create Sprint Manually
 
 1. Go to your project backlog:
-   https://bodywave.atlassian.net/jira/software/projects/{PROJECT}/boards
+   https://your-domain.atlassian.net/jira/software/projects/{PROJECT}/boards
 
 2. Click "Create Sprint" in the backlog view
 

@@ -47,5 +47,5 @@ Parse the arguments and create a new Jira issue:
 | Type | Task |
 | Summary | Add user authentication |
 | Status | To Do |
-| Link | https://bodywave.atlassian.net/browse/PROJ-123 |
+| Link | https://your-domain.atlassian.net/browse/PROJ-123 |
 ```
