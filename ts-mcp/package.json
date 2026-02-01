@@ -1,6 +1,6 @@
 {
   "name": "@bodywave/jira-mcp",
-  "version": "1.0.25",
+  "version": "1.0.26",
   "description": "MCP server for Jira with full sprint management, bulk operations, and multi-account support",
   "type": "module",
   "main": "dist/index.js",
@@ -29,7 +29,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/bodywave/jira-mcp.git"
+    "url": "https://github.com/mottysisam/bodywave-jira.git"
   },
   "engines": {
     "node": ">=18.0.0"
