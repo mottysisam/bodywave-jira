@@ -1,7 +1,7 @@
 /**
  * Multi-Account Manager for Jira MCP Server
  *
- * Manages multiple Jira account configurations with:
+ * Manages multiple Jira and Confluence account configurations with:
  * - Runtime account switching
  * - Secure credential storage (in-memory)
  * - Account listing and selection
@@ -9,6 +9,7 @@
 
 import { JiraConfig } from "./types.js";
 import { JiraClient, JiraClientError } from "./jira-client.js";
+import { ConfluenceClient } from "./confluence-client.js";
 
 export interface JiraAccount {
   id: string;           // Unique identifier (e.g., "mycompany", "secondary")
@@ -29,6 +30,7 @@ export class AccountManager {
   private credentials: Map<string, AccountCredentials> = new Map();
   private activeAccountId: string | null = null;
   private clients: Map<string, JiraClient> = new Map();
+  private confluenceClients: Map<string, ConfluenceClient> = new Map();
 
   constructor() {
     // Initialize with default account from environment if available
@@ -107,6 +109,15 @@ export class AccountManager {
     });
     this.clients.set(id, client);
 
+    // Create ConfluenceClient for this account (same credentials, different base URL)
+    const confluenceClient = new ConfluenceClient({
+      baseUrl: `${account.url}/wiki/api/v2`,
+      v1BaseUrl: `${account.url}/wiki/rest/api`,
+      email,
+      apiKey,
+    });
+    this.confluenceClients.set(id, confluenceClient);
+
     // If this is the first account, make it active
     if (this.accounts.size === 1) {
       this.setActiveAccount(id);
@@ -139,6 +150,7 @@ export class AccountManager {
     this.accounts.delete(id);
     this.credentials.delete(id);
     this.clients.delete(id);
+    this.confluenceClients.delete(id);
 
     return true;
   }
@@ -190,6 +202,33 @@ export class AccountManager {
    */
   getClient(id: string): JiraClient {
     const client = this.clients.get(id);
+    if (!client) {
+      throw new JiraClientError(`Account '${id}' not found`);
+    }
+    return client;
+  }
+
+  /**
+   * Get the active ConfluenceClient
+   */
+  getActiveConfluenceClient(): ConfluenceClient {
+    if (!this.activeAccountId) {
+      throw new JiraClientError("No active account configured");
+    }
+
+    const client = this.confluenceClients.get(this.activeAccountId);
+    if (!client) {
+      throw new JiraClientError("Confluence client not found for active account");
+    }
+
+    return client;
+  }
+
+  /**
+   * Get ConfluenceClient for specific account
+   */
+  getConfluenceClient(id: string): ConfluenceClient {
+    const client = this.confluenceClients.get(id);
     if (!client) {
       throw new JiraClientError(`Account '${id}' not found`);
     }

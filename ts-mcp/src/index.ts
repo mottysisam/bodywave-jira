@@ -21,17 +21,31 @@ import {
   Tool,
 } from "@modelcontextprotocol/sdk/types.js";
 import { JiraClientError } from "./jira-client.js";
+import { ConfluenceClientError } from "./confluence-client.js";
 import { SprintState, ProjectTemplate, ProjectTypeKey } from "./types.js";
+import { ConfluencePageStatus, ConfluenceBodyFormat } from "./confluence-types.js";
 import { accountManager } from "./account-manager.js";
 
 import { logger } from "./logger.js";
 
 // Version and changelog info
 const VERSION_INFO = {
-  version: "1.0.25",
+  version: "1.1.1",
   name: "@bodywave/jira-mcp",
-  description: "MCP server for Jira with full sprint management, bulk operations, and multi-account support",
+  description: "MCP server for Jira and Confluence with full sprint management, bulk operations, and multi-account support",
   changelog: [
+    {
+      version: "1.1.1",
+      date: "2026-02-02",
+      changes: [
+        "Added Confluence integration with 27 new tools",
+        "Confluence tools: spaces, pages, search, comments, labels, attachments, content properties",
+        "Same credentials work for both Jira and Confluence (no new env vars)",
+        "Dual API version support: v2 for most operations, v1 for search/CQL, label writes, attachment uploads",
+        "Cursor-based pagination for all Confluence list operations",
+        "Auto version increment on page and comment updates",
+      ],
+    },
     {
       version: "1.0.25",
       date: "2025-12-05",
@@ -284,6 +298,11 @@ const VERSION_INFO = {
 // Get active Jira client from account manager
 function getJiraClient() {
   return accountManager.getActiveClient();
+}
+
+// Get active Confluence client from account manager
+function getConfluenceClient() {
+  return accountManager.getActiveConfluenceClient();
 }
 
 // Define MCP tools
@@ -1930,6 +1949,669 @@ This tool fetches an EPIC and all its child tasks, then generates:
       },
     },
   },
+
+  // ==================== Confluence Space Tools ====================
+  {
+    name: "confluence_list_spaces",
+    description:
+      "List Confluence spaces (not pages — a space is a top-level container that holds pages). " +
+      "Returns space id, key, name, type. " +
+      "Use confluence_list_pages with space_id to get pages inside a space. " +
+      "Pagination: if the response includes a 'cursor' field, pass it back as the 'cursor' parameter to get the next page of results.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        type: {
+          type: "string",
+          enum: ["global", "personal"],
+          description: "Filter by space type. 'global' = shared team spaces, 'personal' = individual user spaces.",
+        },
+        status: {
+          type: "string",
+          description: "Filter by status. Usually 'current'.",
+        },
+        limit: {
+          type: "number",
+          description: "Max results per page (default: 25, max: 250).",
+        },
+        cursor: {
+          type: "string",
+          description: "Pagination cursor returned in the 'cursor' field of a previous response. Omit for first page.",
+        },
+      },
+    },
+  },
+  {
+    name: "confluence_get_space",
+    description:
+      "Get detailed information about a single Confluence space by its numeric ID. " +
+      "To find a space ID, use confluence_list_spaces first and look at the 'id' field. " +
+      "Returns: id, key, name, type, status, description, homepageId.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        space_id: {
+          type: "string",
+          description: "Numeric space ID (e.g., '65540'). NOT the space key — use confluence_list_spaces to find the ID.",
+        },
+      },
+      required: ["space_id"],
+    },
+  },
+  {
+    name: "confluence_create_space",
+    description:
+      "Create a new Confluence space. A space is a top-level container for pages. " +
+      "The key must be unique across the entire Confluence instance. " +
+      "After creation, use confluence_create_page with the returned space ID to add pages.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        key: {
+          type: "string",
+          description: "Space key — short unique identifier (e.g., 'ENG', 'HR', 'DOCS'). Uppercase letters and numbers only, max 255 chars.",
+        },
+        name: {
+          type: "string",
+          description: "Human-readable space name (e.g., 'Engineering Team').",
+        },
+        description: {
+          type: "string",
+          description: "Plain text description of the space's purpose.",
+        },
+        type: {
+          type: "string",
+          enum: ["global", "personal"],
+          description: "Space type. 'global' (default) = shared team space. 'personal' = private user space.",
+        },
+      },
+      required: ["key", "name"],
+    },
+  },
+  {
+    name: "confluence_delete_space",
+    description:
+      "DESTRUCTIVE: Permanently delete a Confluence space and ALL its pages, attachments, and comments. " +
+      "This cannot be undone. Use confluence_get_space first to verify you have the right space.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        space_id: {
+          type: "string",
+          description: "Numeric space ID to delete. Use confluence_list_spaces to find the ID.",
+        },
+      },
+      required: ["space_id"],
+    },
+  },
+
+  // ==================== Confluence Page Tools ====================
+  {
+    name: "confluence_list_pages",
+    description:
+      "List Confluence pages with optional filters. " +
+      "IMPORTANT: Without a space_id filter, this returns pages across ALL spaces — always pass space_id when you know which space to look in. " +
+      "Returns page id, title, status, spaceId, parentId. Does NOT return page body by default — pass body_format to include it. " +
+      "Pagination: if the response includes a 'cursor' field, pass it back to get the next page.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        space_id: {
+          type: "string",
+          description: "Filter by space ID. Strongly recommended to avoid scanning all spaces.",
+        },
+        status: {
+          type: "string",
+          enum: ["current", "draft", "trashed"],
+          description: "Filter by page status. 'current' = published pages (most common).",
+        },
+        title: {
+          type: "string",
+          description: "Filter by exact page title (case-sensitive exact match). For partial/fuzzy search, use confluence_search instead.",
+        },
+        body_format: {
+          type: "string",
+          enum: ["storage", "atlas_doc_format", "view"],
+          description:
+            "Include page body in this format. 'storage' = raw XHTML markup (best for reading/editing). " +
+            "'view' = rendered HTML (best for display). Omit to skip body content and only get metadata.",
+        },
+        limit: {
+          type: "number",
+          description: "Max results per page (default: 25, max: 250).",
+        },
+        cursor: {
+          type: "string",
+          description: "Pagination cursor from previous response 'cursor' field. Omit for first page.",
+        },
+      },
+    },
+  },
+  {
+    name: "confluence_get_page",
+    description:
+      "Get a single Confluence page by its numeric ID. " +
+      "IMPORTANT: The page body is NOT returned unless you pass body_format. Use body_format='storage' to get the editable XHTML content. " +
+      "Returns: id, title, status, spaceId, parentId, version (number, message), body (if requested).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        page_id: {
+          type: "string",
+          description: "Numeric page ID (e.g., '98306'). Use confluence_list_pages or confluence_search to find page IDs.",
+        },
+        body_format: {
+          type: "string",
+          enum: ["storage", "atlas_doc_format", "view"],
+          description:
+            "Format for the body content. 'storage' = raw XHTML (for editing — pass this to confluence_update_page). " +
+            "'view' = rendered HTML. Omit to skip body and only get metadata.",
+        },
+      },
+      required: ["page_id"],
+    },
+  },
+  {
+    name: "confluence_create_page",
+    description:
+      "Create a new Confluence page. The body uses Confluence storage format — an XHTML-like markup. " +
+      "Common tags: <p>paragraph</p>, <h1>heading</h1>, <ul><li>bullet</li></ul>, <a href=\"url\">link</a>, " +
+      "<ac:structured-macro> for macros. Plain text without tags will NOT render properly — always wrap in <p> tags at minimum.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        space_id: {
+          type: "string",
+          description: "Space ID to create the page in. Use confluence_list_spaces to find the ID.",
+        },
+        title: {
+          type: "string",
+          description: "Page title. Must be unique within the space.",
+        },
+        body: {
+          type: "string",
+          description:
+            "Page body in storage format (XHTML). Examples: " +
+            "'<p>Simple paragraph</p>', " +
+            "'<h1>Title</h1><p>Body text</p>', " +
+            "'<ul><li>Item 1</li><li>Item 2</li></ul>'. " +
+            "Omit to create a blank page.",
+        },
+        parent_id: {
+          type: "string",
+          description: "Parent page ID to nest this page under. Omit to create a top-level page in the space.",
+        },
+        status: {
+          type: "string",
+          enum: ["current", "draft"],
+          description: "Page status. 'current' (default) = published and visible. 'draft' = not yet published.",
+        },
+      },
+      required: ["space_id", "title"],
+    },
+  },
+  {
+    name: "confluence_update_page",
+    description:
+      "Update an existing Confluence page. You must provide at least a new title or new body (or both). " +
+      "Version number is handled automatically — you do not need to track or pass it. " +
+      "WARNING: The body parameter REPLACES the entire page body. To edit part of a page, first read it with " +
+      "confluence_get_page(body_format='storage'), modify the returned XHTML, then pass the full modified body here.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        page_id: {
+          type: "string",
+          description: "Numeric page ID to update.",
+        },
+        title: {
+          type: "string",
+          description: "New page title. Omit to keep the current title.",
+        },
+        body: {
+          type: "string",
+          description:
+            "New FULL page body in storage format (XHTML). This REPLACES the entire page content. " +
+            "To make a small edit: (1) read the page with body_format='storage', (2) modify the XHTML, (3) pass the full result here.",
+        },
+        status: {
+          type: "string",
+          enum: ["current", "draft"],
+          description: "Change page status. 'current' = published, 'draft' = unpublished.",
+        },
+        version_message: {
+          type: "string",
+          description: "Version comment shown in the page's history/changelog (e.g., 'Updated pricing section').",
+        },
+      },
+      required: ["page_id"],
+    },
+  },
+  {
+    name: "confluence_delete_page",
+    description:
+      "DESTRUCTIVE: Delete a Confluence page. The page is moved to trash and can be recovered by a Confluence admin. " +
+      "All child pages are also affected. Use confluence_get_page first to verify you have the right page.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        page_id: {
+          type: "string",
+          description: "Numeric page ID to delete. Use confluence_list_pages or confluence_search to find the ID.",
+        },
+      },
+      required: ["page_id"],
+    },
+  },
+  {
+    name: "confluence_get_child_pages",
+    description:
+      "Get the immediate child pages of a given Confluence page (one level deep, not recursive). " +
+      "Returns page metadata without body content. " +
+      "Pagination: if the response includes a 'cursor' field, pass it back to get the next page.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        parent_id: {
+          type: "string",
+          description: "Numeric page ID of the parent page whose children you want to list.",
+        },
+        limit: {
+          type: "number",
+          description: "Max results per page (default: 25).",
+        },
+        cursor: {
+          type: "string",
+          description: "Pagination cursor from previous response 'cursor' field. Omit for first page.",
+        },
+      },
+      required: ["parent_id"],
+    },
+  },
+  {
+    name: "confluence_get_page_ancestors",
+    description:
+      "Get the ancestor chain (all parent pages) of a Confluence page. " +
+      "Returns an array ordered from the root/top-level page down to the immediate parent. " +
+      "Useful for understanding where a page sits in the page tree hierarchy.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        page_id: {
+          type: "string",
+          description: "Numeric page ID whose ancestors (parent chain) you want to retrieve.",
+        },
+      },
+      required: ["page_id"],
+    },
+  },
+
+  // ==================== Confluence Search Tools ====================
+  {
+    name: "confluence_search",
+    description:
+      "Search Confluence using CQL (Confluence Query Language). This is the best way to find pages by content, title, or labels. " +
+      "Unlike confluence_list_pages (exact title match only), this supports full-text search and complex filters. " +
+      "Returns: title, excerpt, content ID/type, space info, last modified date. " +
+      "Note: uses offset-based pagination (start + limit), not cursor-based.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        cql: {
+          type: "string",
+          description:
+            "CQL query string. Common patterns: " +
+            "'type=page AND space=ENG' (pages in a space by KEY), " +
+            "'type=page AND text~\"deploy\"' (full-text search), " +
+            "'type=page AND title~\"Release\"' (title contains), " +
+            "'type=page AND label=\"important\"' (pages with label), " +
+            "'type=page AND creator=currentUser()' (my pages), " +
+            "'type=page AND lastModified > now(\"-7d\")' (changed this week). " +
+            "Combine with AND/OR. Use ~ for contains, = for exact match.",
+        },
+        limit: {
+          type: "number",
+          description: "Max results to return (default: 25, max: 200).",
+        },
+        start: {
+          type: "number",
+          description: "Result offset for pagination. First page = 0. Next page = start + limit.",
+        },
+      },
+      required: ["cql"],
+    },
+  },
+
+  // ==================== Confluence Comment Tools ====================
+  {
+    name: "confluence_get_page_comments",
+    description:
+      "Get footer comments on a Confluence page. Footer comments appear at the bottom of the page (not inline). " +
+      "Returns comment id, body, version. " +
+      "Pagination: if the response includes a 'cursor' field, pass it back to get the next page.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        page_id: {
+          type: "string",
+          description: "Numeric page ID to get comments from.",
+        },
+        body_format: {
+          type: "string",
+          enum: ["storage", "atlas_doc_format", "view"],
+          description: "Format for comment body. 'storage' = raw XHTML, 'view' = rendered HTML. Defaults to storage.",
+        },
+        limit: {
+          type: "number",
+          description: "Max comments to return per page (default: 25).",
+        },
+        cursor: {
+          type: "string",
+          description: "Pagination cursor from previous response 'cursor' field. Omit for first page.",
+        },
+      },
+      required: ["page_id"],
+    },
+  },
+  {
+    name: "confluence_get_comment",
+    description:
+      "Get a single Confluence comment by its numeric ID. Returns comment body, version, and metadata.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        comment_id: {
+          type: "string",
+          description: "Numeric comment ID. Found in the results of confluence_get_page_comments.",
+        },
+        body_format: {
+          type: "string",
+          enum: ["storage", "atlas_doc_format", "view"],
+          description: "Format for comment body. 'storage' = raw XHTML (default), 'view' = rendered HTML.",
+        },
+      },
+      required: ["comment_id"],
+    },
+  },
+  {
+    name: "confluence_create_comment",
+    description:
+      "Add a footer comment to a Confluence page. The body uses storage format (XHTML), same as page bodies. " +
+      "Always wrap text in HTML tags: '<p>My comment</p>'.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        page_id: {
+          type: "string",
+          description: "Numeric page ID to add the comment to.",
+        },
+        body: {
+          type: "string",
+          description: "Comment body in storage format (XHTML). Example: '<p>Looks good, approved!</p>'.",
+        },
+      },
+      required: ["page_id", "body"],
+    },
+  },
+  {
+    name: "confluence_update_comment",
+    description:
+      "Update an existing Confluence comment. Version number is handled automatically. " +
+      "The body REPLACES the entire comment content.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        comment_id: {
+          type: "string",
+          description: "Numeric comment ID to update.",
+        },
+        body: {
+          type: "string",
+          description: "New FULL comment body in storage format (XHTML). Replaces the entire comment.",
+        },
+      },
+      required: ["comment_id", "body"],
+    },
+  },
+  {
+    name: "confluence_delete_comment",
+    description:
+      "DESTRUCTIVE: Delete a Confluence comment. This cannot be undone.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        comment_id: {
+          type: "string",
+          description: "Numeric comment ID to delete.",
+        },
+      },
+      required: ["comment_id"],
+    },
+  },
+
+  // ==================== Confluence Label Tools ====================
+  {
+    name: "confluence_get_page_labels",
+    description:
+      "Get all labels on a Confluence page. Labels are simple string tags used for categorization and search filtering. " +
+      "Returns label id, name, and prefix ('global' for user-created labels). " +
+      "Pagination: if the response includes a 'cursor' field, pass it back to get the next page.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        page_id: {
+          type: "string",
+          description: "Numeric page ID.",
+        },
+        limit: {
+          type: "number",
+          description: "Max labels to return per page (default: 25).",
+        },
+        cursor: {
+          type: "string",
+          description: "Pagination cursor from previous response 'cursor' field. Omit for first page.",
+        },
+      },
+      required: ["page_id"],
+    },
+  },
+  {
+    name: "confluence_add_page_labels",
+    description:
+      "Add one or more labels to a Confluence page. Labels are lowercase string tags. " +
+      "If a label already exists on the page, it is silently ignored (idempotent). " +
+      "Labels can then be used in CQL search: label=\"my-label\".",
+    inputSchema: {
+      type: "object",
+      properties: {
+        page_id: {
+          type: "string",
+          description: "Numeric page ID.",
+        },
+        labels: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "Array of label names to add. Use lowercase, no spaces (use hyphens). " +
+            "Example: [\"reviewed\", \"q1-2025\", \"architecture\"].",
+        },
+      },
+      required: ["page_id", "labels"],
+    },
+  },
+  {
+    name: "confluence_remove_page_label",
+    description:
+      "Remove a single label from a Confluence page. If the label does not exist on the page, this may return an error.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        page_id: {
+          type: "string",
+          description: "Numeric page ID.",
+        },
+        label: {
+          type: "string",
+          description: "Exact label name to remove (e.g., 'outdated').",
+        },
+      },
+      required: ["page_id", "label"],
+    },
+  },
+
+  // ==================== Confluence Attachment Tools ====================
+  {
+    name: "confluence_get_page_attachments",
+    description:
+      "List all file attachments on a Confluence page. Returns attachment id, title (filename), mediaType, fileSize. " +
+      "Pagination: if the response includes a 'cursor' field, pass it back to get the next page.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        page_id: {
+          type: "string",
+          description: "Numeric page ID.",
+        },
+        limit: {
+          type: "number",
+          description: "Max results per page (default: 25).",
+        },
+        cursor: {
+          type: "string",
+          description: "Pagination cursor from previous response 'cursor' field. Omit for first page.",
+        },
+      },
+      required: ["page_id"],
+    },
+  },
+  {
+    name: "confluence_get_attachment",
+    description:
+      "Get metadata about a single Confluence attachment by its numeric ID. " +
+      "Returns: id, title (filename), mediaType, fileSize, version, pageId. " +
+      "Does NOT return the file content — only metadata.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        attachment_id: {
+          type: "string",
+          description: "Numeric attachment ID. Found in the results of confluence_get_page_attachments.",
+        },
+      },
+      required: ["attachment_id"],
+    },
+  },
+  {
+    name: "confluence_upload_attachment",
+    description:
+      "Upload a file to a Confluence page as an attachment. The file content must be base64-encoded. " +
+      "If a file with the same name already exists, Confluence creates a new version of that attachment. " +
+      "Max file size depends on your Confluence instance settings (typically 200MB).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        page_id: {
+          type: "string",
+          description: "Numeric page ID to attach the file to.",
+        },
+        filename: {
+          type: "string",
+          description: "Filename including extension (e.g., 'architecture-diagram.png', 'report.pdf').",
+        },
+        content: {
+          type: "string",
+          description: "File content encoded as a base64 string.",
+        },
+        comment: {
+          type: "string",
+          description: "Optional version comment for the attachment (e.g., 'Updated diagram with new service').",
+        },
+      },
+      required: ["page_id", "filename", "content"],
+    },
+  },
+  {
+    name: "confluence_delete_attachment",
+    description:
+      "DESTRUCTIVE: Delete a Confluence attachment. This permanently removes the file. " +
+      "Use confluence_get_attachment first to verify you have the right file.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        attachment_id: {
+          type: "string",
+          description: "Numeric attachment ID to delete. Use confluence_get_page_attachments to find the ID.",
+        },
+      },
+      required: ["attachment_id"],
+    },
+  },
+
+  // ==================== Confluence Content Property Tools ====================
+  {
+    name: "confluence_get_page_properties",
+    description:
+      "Get all content properties on a Confluence page. Properties are key-value metadata pairs stored on pages " +
+      "(separate from labels). Commonly used by apps/integrations to store structured data. " +
+      "Returns an array of {id, key, value, version} objects.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        page_id: {
+          type: "string",
+          description: "Numeric page ID.",
+        },
+      },
+      required: ["page_id"],
+    },
+  },
+  {
+    name: "confluence_get_page_property",
+    description:
+      "Get a single content property by its key from a Confluence page. " +
+      "Returns {id, key, value, version}. The value can be any JSON type (string, number, object, array).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        page_id: {
+          type: "string",
+          description: "Numeric page ID.",
+        },
+        property_key: {
+          type: "string",
+          description: "Exact property key name (e.g., 'my-app.config', 'status').",
+        },
+      },
+      required: ["page_id", "property_key"],
+    },
+  },
+  {
+    name: "confluence_set_page_property",
+    description:
+      "Create or update a content property on a Confluence page. " +
+      "If the key already exists, the value is updated and the version is auto-incremented. " +
+      "If the key does not exist, a new property is created. This operation is idempotent.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        page_id: {
+          type: "string",
+          description: "Numeric page ID.",
+        },
+        key: {
+          type: "string",
+          description: "Property key name. Use namespaced keys to avoid collisions (e.g., 'myapp.status').",
+        },
+        value: {
+          type: ["string", "number", "boolean", "object", "array"],
+          description:
+            "Property value. Can be any JSON-serializable type: " +
+            "string ('active'), number (42), boolean (true), object ({\"status\": \"done\"}), or array ([1, 2, 3]).",
+        },
+      },
+      required: ["page_id", "key", "value"],
+    },
+  },
 ];
 
 // Helper function to generate project suggestions from repo name
@@ -2678,11 +3360,197 @@ async function handleToolCall(
         return await accountManager.testConnection(accountId);
       }
 
+      // ==================== Confluence Space Tools ====================
+      case "confluence_list_spaces":
+        return await getConfluenceClient().listSpaces({
+          type: args.type as string | undefined,
+          status: args.status as string | undefined,
+          limit: args.limit as number | undefined,
+          cursor: args.cursor as string | undefined,
+        });
+
+      case "confluence_get_space":
+        return await getConfluenceClient().getSpace(args.space_id as string);
+
+      case "confluence_create_space":
+        return await getConfluenceClient().createSpace({
+          key: args.key as string,
+          name: args.name as string,
+          description: args.description as string | undefined,
+          type: args.type as "global" | "personal" | undefined,
+        });
+
+      case "confluence_delete_space":
+        await getConfluenceClient().deleteSpace(args.space_id as string);
+        return { success: true, message: `Space ${args.space_id} deleted` };
+
+      // ==================== Confluence Page Tools ====================
+      case "confluence_list_pages":
+        return await getConfluenceClient().listPages({
+          spaceId: args.space_id as string | undefined,
+          status: args.status as ConfluencePageStatus | undefined,
+          title: args.title as string | undefined,
+          bodyFormat: args.body_format as ConfluenceBodyFormat | undefined,
+          limit: args.limit as number | undefined,
+          cursor: args.cursor as string | undefined,
+        });
+
+      case "confluence_get_page":
+        return await getConfluenceClient().getPage(
+          args.page_id as string,
+          args.body_format as ConfluenceBodyFormat | undefined,
+        );
+
+      case "confluence_create_page":
+        return await getConfluenceClient().createPage({
+          spaceId: args.space_id as string,
+          title: args.title as string,
+          body: args.body as string | undefined,
+          parentId: args.parent_id as string | undefined,
+          status: args.status as ConfluencePageStatus | undefined,
+        });
+
+      case "confluence_update_page":
+        return await getConfluenceClient().updatePage(args.page_id as string, {
+          title: args.title as string | undefined,
+          body: args.body as string | undefined,
+          status: args.status as ConfluencePageStatus | undefined,
+          versionMessage: args.version_message as string | undefined,
+        });
+
+      case "confluence_delete_page":
+        await getConfluenceClient().deletePage(args.page_id as string);
+        return { success: true, message: `Page ${args.page_id} deleted` };
+
+      case "confluence_get_child_pages":
+        return await getConfluenceClient().getChildPages(
+          args.parent_id as string,
+          {
+            limit: args.limit as number | undefined,
+            cursor: args.cursor as string | undefined,
+          },
+        );
+
+      case "confluence_get_page_ancestors":
+        return await getConfluenceClient().getPageAncestors(args.page_id as string);
+
+      // ==================== Confluence Search Tools ====================
+      case "confluence_search":
+        return await getConfluenceClient().search(
+          args.cql as string,
+          {
+            limit: args.limit as number | undefined,
+            start: args.start as number | undefined,
+          },
+        );
+
+      // ==================== Confluence Comment Tools ====================
+      case "confluence_get_page_comments":
+        return await getConfluenceClient().getPageComments(
+          args.page_id as string,
+          {
+            bodyFormat: args.body_format as ConfluenceBodyFormat | undefined,
+            limit: args.limit as number | undefined,
+            cursor: args.cursor as string | undefined,
+          },
+        );
+
+      case "confluence_get_comment":
+        return await getConfluenceClient().getComment(
+          args.comment_id as string,
+          args.body_format as ConfluenceBodyFormat | undefined,
+        );
+
+      case "confluence_create_comment":
+        return await getConfluenceClient().createComment(
+          args.page_id as string,
+          { body: args.body as string },
+        );
+
+      case "confluence_update_comment":
+        return await getConfluenceClient().updateComment(
+          args.comment_id as string,
+          { body: args.body as string },
+        );
+
+      case "confluence_delete_comment":
+        await getConfluenceClient().deleteComment(args.comment_id as string);
+        return { success: true, message: `Comment ${args.comment_id} deleted` };
+
+      // ==================== Confluence Label Tools ====================
+      case "confluence_get_page_labels":
+        return await getConfluenceClient().getPageLabels(
+          args.page_id as string,
+          {
+            limit: args.limit as number | undefined,
+            cursor: args.cursor as string | undefined,
+          },
+        );
+
+      case "confluence_add_page_labels": {
+        const labels = Array.isArray(args.labels)
+          ? args.labels as string[]
+          : JSON.parse(args.labels as string) as string[];
+        return await getConfluenceClient().addPageLabels(
+          args.page_id as string,
+          labels,
+        );
+      }
+
+      case "confluence_remove_page_label":
+        await getConfluenceClient().removePageLabel(
+          args.page_id as string,
+          args.label as string,
+        );
+        return { success: true, message: `Label '${args.label}' removed from page ${args.page_id}` };
+
+      // ==================== Confluence Attachment Tools ====================
+      case "confluence_get_page_attachments":
+        return await getConfluenceClient().getPageAttachments(
+          args.page_id as string,
+          {
+            limit: args.limit as number | undefined,
+            cursor: args.cursor as string | undefined,
+          },
+        );
+
+      case "confluence_get_attachment":
+        return await getConfluenceClient().getAttachment(args.attachment_id as string);
+
+      case "confluence_upload_attachment":
+        return await getConfluenceClient().uploadAttachment(
+          args.page_id as string,
+          args.filename as string,
+          args.content as string,
+          args.comment as string | undefined,
+        );
+
+      case "confluence_delete_attachment":
+        await getConfluenceClient().deleteAttachment(args.attachment_id as string);
+        return { success: true, message: `Attachment ${args.attachment_id} deleted` };
+
+      // ==================== Confluence Content Property Tools ====================
+      case "confluence_get_page_properties":
+        return await getConfluenceClient().getPageProperties(args.page_id as string);
+
+      case "confluence_get_page_property":
+        return await getConfluenceClient().getPageProperty(
+          args.page_id as string,
+          args.property_key as string,
+        );
+
+      case "confluence_set_page_property":
+        return await getConfluenceClient().setPageProperty(
+          args.page_id as string,
+          args.key as string,
+          args.value,
+        );
+
       default:
         throw new Error(`Unknown tool: ${name}`);
     }
   } catch (error) {
-    if (error instanceof JiraClientError) {
+    if (error instanceof JiraClientError || error instanceof ConfluenceClientError) {
       return {
         error: true,
         message: error.message,

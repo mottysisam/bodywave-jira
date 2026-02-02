@@ -9,7 +9,7 @@ export default defineConfig({
       provider: "v8",
       reporter: ["text", "json", "html"],
       include: ["src/**/*.ts"],
-      exclude: ["src/types.ts", "src/index.ts"],
+      exclude: ["src/types.ts", "src/confluence-types.ts", "src/index.ts"],
       thresholds: {
         lines: 60,
         functions: 60,
